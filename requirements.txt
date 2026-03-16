@@ -1,0 +1,4 @@
+cryptography>=42.0.0,<46.0.0
+questionary>=2.1.0,<3.0.0
+rich>=13.7.0,<15.0.0
+zstandard>=0.23.0,<1.0.0

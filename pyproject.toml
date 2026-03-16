@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "peridot-cli"
+version = "0.3.0"
+description = "Visual CLI for portable configuration bundles"
+readme = "readme.md"
+requires-python = ">=3.11"
+dependencies = [
+  "cryptography>=42.0.0,<46.0.0",
+  "questionary>=2.1.0,<3.0.0",
+  "rich>=13.7.0,<15.0.0",
+  "zstandard>=0.23.0,<1.0.0",
+]
+authors = [
+  { name = "Francisco Puga Lojo" }
+]
+keywords = ["dotfiles", "backup", "cli", "config", "portable", "terminal"]
+classifiers = [
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: System :: Archiving",
+  "Topic :: Utilities",
+]
+
+[project.scripts]
+peridot = "peridot:main"
+
+[tool.setuptools]
+py-modules = ["peridot"]
