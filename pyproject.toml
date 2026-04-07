@@ -34,5 +34,10 @@ classifiers = [
 [project.scripts]
 peridot = "peridot:main"
 
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+]
+
 [tool.setuptools]
 py-modules = ["peridot"]
