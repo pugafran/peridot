@@ -2758,6 +2758,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_KEY,
         help=trf("Ruta de la clave AES-GCM (por defecto: {path})", path=DEFAULT_KEY),
     )
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="version",
+        version=f"%(prog)s {APP_VERSION}",
+        help=tr("Muestra la version y sale"),
+    )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
