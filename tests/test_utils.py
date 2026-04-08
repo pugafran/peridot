@@ -39,3 +39,9 @@ def test_sanitize_language_accepts_locales():
 def test_sanitize_language_falls_back_to_default():
     assert peridot.sanitize_language("fr") == peridot.DEFAULT_SETTINGS["language"]
     assert peridot.sanitize_language("") == peridot.DEFAULT_SETTINGS["language"]
+
+
+def test_decode_aesgcm_key_bytes_accepts_unpadded_base64url():
+    raw_key = bytes(range(32))
+    encoded = peridot.base64.urlsafe_b64encode(raw_key).rstrip(b"=")
+    assert peridot.decode_aesgcm_key_bytes(encoded) == raw_key

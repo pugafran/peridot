@@ -765,20 +765,44 @@ def fingerprint_key(key: bytes) -> str:
     return hashlib.sha256(key).hexdigest()[:16]
 
 
+def decode_aesgcm_key_bytes(raw: bytes) -> bytes | None:
+    """Decode a 32-byte AES-GCM key from raw bytes or base64url.
+
+    Accepts:
+    - Raw 32 bytes
+    - base64url-encoded bytes (with or without padding, with optional newlines)
+    """
+
+    if len(raw) == 32:
+        return raw
+
+    cleaned = b"".join(raw.split())
+    if not cleaned:
+        return None
+
+    # base64 decoders expect padding; allow unpadded base64url keys.
+    missing_padding = (-len(cleaned)) % 4
+    if missing_padding:
+        cleaned += b"=" * missing_padding
+
+    try:
+        decoded = base64.urlsafe_b64decode(cleaned)
+    except Exception:
+        return None
+
+    return decoded if len(decoded) == 32 else None
+
+
 def load_key(key_path: Path, create: bool = False) -> bytes:
     if key_path.exists():
         key = key_path.read_bytes()
-        if len(key) == 32:
-            return key
-        try:
-            decoded = base64.urlsafe_b64decode(key)
-        except Exception:
-            decoded = b""
-        if len(decoded) == 32:
-            try:
-                write_key(key_path, decoded)
-            except OSError:
-                pass
+        decoded = decode_aesgcm_key_bytes(key)
+        if decoded is not None:
+            if decoded != key:
+                try:
+                    write_key(key_path, decoded)
+                except OSError:
+                    pass
             return decoded
         die(f"Clave invalida en {key_path}: se esperaban 32 bytes para AES-GCM.")
     if not create:
