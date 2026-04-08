@@ -53,7 +53,14 @@ Durante desarrollo:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e .
+.venv/bin/pip install -e '.[dev]'
+```
+
+Tests:
+
+```bash
+. .venv/bin/activate
+pytest -q
 ```
 
 Instalacion automatica del repo:
