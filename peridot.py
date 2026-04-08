@@ -2332,7 +2332,8 @@ def cmd_bench(args) -> None:
     with different compression levels/jobs, reporting wall time and output size.
     """
 
-    print_banner()
+    if not (args.json and not getattr(args, "out", None)):
+        print_banner()
 
     runs = max(1, int(args.runs))
     file_count = max(1, int(args.files))
@@ -2411,14 +2412,16 @@ def cmd_bench(args) -> None:
 
     input_bytes = file_count * size_kb * 1024
 
-    # Print a compact summary.
-    console.print("\n[bold]" + tr("Bench results") + "[/bold]")
-    for row in results:
-        mb_s = (input_bytes / 1_000_000) / max(0.0001, float(row["seconds"]))
-        ratio = float(row["output_bytes"]) / max(1.0, float(input_bytes))
-        console.print(
-            f"- level={row['level']} jobs={row['jobs']} run={row['run']} -> {row['seconds']}s | in={format_bytes(int(input_bytes))} | out={format_bytes(int(row['output_bytes']))} | {mb_s:.1f} MB/s | ratio={ratio:.2f}"
-        )
+    # Print a compact summary (unless in JSON-only mode).
+    json_only = bool(args.json and not getattr(args, "out", None))
+    if not json_only:
+        console.print("\n[bold]" + tr("Bench results") + "[/bold]")
+        for row in results:
+            mb_s = (input_bytes / 1_000_000) / max(0.0001, float(row["seconds"]))
+            ratio = float(row["output_bytes"]) / max(1.0, float(input_bytes))
+            console.print(
+                f"- level={row['level']} jobs={row['jobs']} run={row['run']} -> {row['seconds']}s | in={format_bytes(int(input_bytes))} | out={format_bytes(int(row['output_bytes']))} | {mb_s:.1f} MB/s | ratio={ratio:.2f}"
+            )
 
     if args.json or getattr(args, "out", None):
         payload = {
@@ -2438,8 +2441,14 @@ def cmd_bench(args) -> None:
 
 
 def cmd_inspect(args) -> None:
-    print_banner()
     manifest = manifest_from_zip(args.package)
+
+    if args.json:
+        # Machine-friendly mode: emit JSON only.
+        print_manifest_json(manifest)
+        return
+
+    print_banner()
     render_bundle_card(manifest, args.package)
     compatible, message = check_platform_compatibility(manifest)
     style = "green" if compatible else "yellow"
@@ -2447,9 +2456,6 @@ def cmd_inspect(args) -> None:
 
     if args.files:
         render_file_table(manifest, limit=None if args.all else 20)
-
-    if args.json:
-        print_manifest_json(manifest)
 
 
 def backup_existing_file(source: Path, backup_dir: Path, home_target: Path) -> Path:
@@ -2635,7 +2641,8 @@ def cmd_apply(args) -> None:
 
 
 def cmd_diff(args) -> None:
-    print_banner()
+    if not getattr(args, "json", False):
+        print_banner()
     manifest = manifest_from_zip(args.package)
     key = None
     if not args.no_hash:
