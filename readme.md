@@ -71,6 +71,12 @@ Instalacion automatica del repo:
 
 Eso crea una `.venv`, instala Peridot en modo editable y deja el comando `peridot` enlazado en `~/.local/bin/peridot`.
 
+Si quieres incluir tambien dependencias de desarrollo (por ejemplo `pytest`):
+
+```bash
+PERIDOT_INSTALL_DEV=1 ./install.sh
+```
+
 ## Flujo principal
 
 Generar o comprobar la clave:

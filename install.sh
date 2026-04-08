@@ -27,7 +27,17 @@ else
   "$PYTHON_BIN" -m venv "$VENV_DIR"
 fi
 "$VENV_DIR/bin/pip" install --upgrade pip
-"$VENV_DIR/bin/pip" install -e "$ROOT_DIR"
+
+# Optional dev extras (pytest, etc.)
+# Usage:
+#   PERIDOT_INSTALL_DEV=1 ./install.sh
+INSTALL_DEV="${PERIDOT_INSTALL_DEV:-0}"
+if [ "$INSTALL_DEV" = "1" ] || [ "$INSTALL_DEV" = "true" ]; then
+  echo "- Installing with dev extras"
+  "$VENV_DIR/bin/pip" install -e "$ROOT_DIR[dev]"
+else
+  "$VENV_DIR/bin/pip" install -e "$ROOT_DIR"
+fi
 
 mkdir -p "$BIN_DIR"
 ln -sf "$VENV_DIR/bin/peridot" "$BIN_DIR/peridot"
