@@ -186,6 +186,11 @@ TRANSLATIONS = {
         "falta la dependencia 'questionary' en este Python.": "the 'questionary' dependency is missing in this Python.",
         "Usa el binario instalado con './install.sh' o ejecuta 'python3 -m pip install -r requirements.txt'.": "Use the binary installed with './install.sh' or run 'python3 -m pip install -r requirements.txt'.",
         "Select groups": "Select groups",
+        "Selecciona rutas": "Select paths",
+        "Selecciona rutas para este bundle": "Select paths for this bundle",
+        "Selecciona grupos de configuracion": "Select config groups",
+        "Espacio para marcar, Enter para confirmar": "Space to toggle, Enter to confirm",
+        "Como quieres construir este bundle?": "How do you want to build this bundle?",
         "Bundle source: preset, catalog or empty": "Bundle source: preset, catalog or empty",
         "Base selection": "Base selection",
         "Preset": "Preset",
@@ -1124,9 +1129,9 @@ def checkbox_prompt(message: str, choices: list, instruction: str | None = None)
     if not QUESTIONARY_AVAILABLE or not sys.stdin.isatty():
         return None
     return questionary.checkbox(
-        message,
+        tr(message),
         choices=choices,
-        instruction=instruction or "Space to toggle, Enter to confirm",
+        instruction=tr(instruction or "Espacio para marcar, Enter para confirmar"),
     ).ask()
 
 
@@ -1167,7 +1172,7 @@ def interactive_checkbox_paths(paths: list[Path], preselected: list[Path] | None
             suffix = "dir" if path.is_dir() else "file"
             label = f"{label}  [{suffix}]"
         choices.append(Choice(title=label, value=path, checked=path in preselected_set))
-    return checkbox_prompt("Select paths", choices)
+    return checkbox_prompt("Selecciona rutas", choices)
 
 
 def build_path_catalog(os_name: str) -> list[tuple[Path, str]]:
@@ -1196,7 +1201,7 @@ def interactive_checkbox_catalog_paths(
         kind = "dir" if path.is_dir() else "file"
         title = f"{path}  [{kind}]  {source_label}"
         choices.append(Choice(title=title, value=path, checked=path in preselected_set))
-    return checkbox_prompt("Select paths for this bundle", choices)
+    return checkbox_prompt("Selecciona rutas para este bundle", choices)
 
 
 def recommended_group_keys(groups: list[ConfigGroup], shell_name: str) -> set[str]:
@@ -1223,7 +1228,7 @@ def interactive_select_config_groups(os_name: str, shell_name: str) -> list[Path
             found = len(existing_paths(group.paths))
             title = f"[{group.category}] {group.label} ({found} found) - {group.description}"
             choices.append(Choice(title=title, value=group.key, checked=group.key in selected_keys))
-        result = checkbox_prompt("Select config groups", choices)
+        result = checkbox_prompt("Selecciona grupos de configuracion", choices)
         if result is not None:
             selected_keys = set(result)
 
@@ -1277,7 +1282,7 @@ def choose_pack_base(os_name: str, preset_name: str | None) -> str:
     ]
     if QUESTIONARY_AVAILABLE and sys.stdin.isatty():
         answer = questionary.select(
-            "How do you want to build this bundle?",
+            tr("Como quieres construir este bundle?"),
             choices=[Choice(title=title, value=value) for title, value in options],
             default="preset" if preset_name else "catalog",
         ).ask()
