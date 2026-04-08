@@ -143,6 +143,28 @@ TRANSLATIONS = {
         "Peridot initialized": "Peridot initialized",
         "Next steps": "Next steps",
         "Bench results": "Bench results",
+        "Verificacion fallida": "Verification failed",
+        "Verificacion OK": "Verification OK",
+        "Inspeccionar": "Inspect",
+        "Mostrar lista de ficheros?": "Show file list?",
+        "Mostrar manifest JSON?": "Show manifest JSON?",
+        "Aplicar": "Apply",
+        "Hacer dry-run primero?": "Dry run first?",
+        "Directorio destino": "Target directory",
+        "Guardar backups antes de sobrescribir?": "Save backups before overwrite?",
+        "Directorio de backups": "Backup directory",
+        "Ignorar mismatch de plataforma?": "Ignore platform mismatch?",
+        "Verificar": "Verify",
+        "Verificacion profunda (descifrar)?": "Deep verify with decryption?",
+        "Compartir": "Share",
+        "Formato": "Format",
+        "Fichero de salida (vacio = imprimir)": "Output file (leave empty to print)",
+        "Nombre del bundle": "Bundle name",
+        "Accion de perfil": "Profile action",
+        "Nombre del perfil": "Profile name",
+        "Rekey todos los bundles locales?": "Rekey all local bundles?",
+        "Borrar todos los bundles locales?": "Delete all local bundles?",
+        "Borrar": "Delete",
         "Portable config bundles for humans": "Portable config bundles for humans",
         "Bundles portables de configuracion para humanos": "Portable config bundles for humans",
         "Error": "Error",
@@ -2506,11 +2528,11 @@ def cmd_verify(args) -> None:
             raise SystemExit(1)
         return
     if issues:
-        console.print("[bold red]Verify failed[/bold red]")
+        console.print(f"[bold red]{tr('Verificacion fallida')}[/bold red]")
         for issue in issues:
             console.print(f"- {issue}")
         raise SystemExit(1)
-    console.print("[bold green]Verify ok[/bold green]")
+    console.print(f"[bold green]{tr('Verificacion OK')}[/bold green]")
 
 
 def render_settings_table(settings: dict) -> None:
@@ -2986,24 +3008,24 @@ def cmd_ui(args) -> None:
                     )
                 )
             elif action == "inspect":
-                package = choose_bundle_path("Inspect")
-                show_files = Confirm.ask("Show file list?", default=True)
-                show_json = Confirm.ask("Show manifest JSON?", default=False)
+                package = choose_bundle_path(tr("Inspeccionar"))
+                show_files = Confirm.ask(tr("Mostrar lista de ficheros?"), default=True)
+                show_json = Confirm.ask(tr("Mostrar manifest JSON?"), default=False)
                 cmd_inspect(SimpleNamespace(package=package, files=show_files, all=True, json=show_json))
             elif action == "apply":
-                package = choose_bundle_path("Apply")
-                dry_run = Confirm.ask("Dry run first?", default=True)
-                target = Path(Prompt.ask("Target directory", default=str(Path.home()))).expanduser()
-                backup_enabled = Confirm.ask("Save backups before overwrite?", default=True)
+                package = choose_bundle_path(tr("Aplicar"))
+                dry_run = Confirm.ask(tr("Hacer dry-run primero?"), default=True)
+                target = Path(Prompt.ask(tr("Directorio destino"), default=str(Path.home()))).expanduser()
+                backup_enabled = Confirm.ask(tr("Guardar backups antes de sobrescribir?"), default=True)
                 backup_dir = None
                 if backup_enabled:
                     backup_dir = Path(
                         Prompt.ask(
-                            "Backup directory",
+                            tr("Directorio de backups"),
                             default=str(Path.home() / ".peridot-backups"),
                         )
                     ).expanduser()
-                ignore_platform = Confirm.ask("Ignore platform mismatch?", default=False)
+                ignore_platform = Confirm.ask(tr("Ignorar mismatch de plataforma?"), default=False)
                 cmd_apply(
                     SimpleNamespace(
                         package=package,
@@ -3016,36 +3038,36 @@ def cmd_ui(args) -> None:
                     )
                 )
             elif action == "diff":
-                package = choose_bundle_path("Diff")
-                target = Path(Prompt.ask("Target directory", default=str(Path.home()))).expanduser()
+                package = choose_bundle_path(tr("Diff"))
+                target = Path(Prompt.ask(tr("Directorio destino"), default=str(Path.home()))).expanduser()
                 cmd_diff(SimpleNamespace(package=package, target=target, no_hash=False, json=False, key=args.key))
             elif action == "verify":
-                package = choose_bundle_path("Verify")
-                deep = Confirm.ask("Deep verify with decryption?", default=True)
+                package = choose_bundle_path(tr("Verificar"))
+                deep = Confirm.ask(tr("Verificacion profunda (descifrar)?"), default=True)
                 cmd_verify(SimpleNamespace(package=package, deep=deep, json=False, key=args.key))
             elif action == "doctor":
                 cmd_doctor(SimpleNamespace(key=args.key, json=False))
             elif action == "share":
-                package = choose_bundle_path("Share")
-                fmt = Prompt.ask("Format", choices=["md", "json"], default="md")
-                output_raw = Prompt.ask("Output file (leave empty to print)", default="")
+                package = choose_bundle_path(tr("Compartir"))
+                fmt = Prompt.ask(tr("Formato"), choices=["md", "json"], default="md")
+                output_raw = Prompt.ask(tr("Fichero de salida (vacio = imprimir)"), default="")
                 output = Path(output_raw).expanduser() if output_raw else None
                 cmd_share(SimpleNamespace(package=package, format=fmt, output=output))
             elif action == "manifest":
                 package = choose_bundle_path("Manifest")
                 cmd_manifest(SimpleNamespace(package=package))
             elif action == "history":
-                bundle_name = Prompt.ask("Bundle name", default=(discover_local_bundles()[0].stem if discover_local_bundles() else "bundle"))
+                bundle_name = Prompt.ask(tr("Nombre del bundle"), default=(discover_local_bundles()[0].stem if discover_local_bundles() else "bundle"))
                 cmd_history(SimpleNamespace(bundle=bundle_name))
             elif action == "profile":
-                profile_action = Prompt.ask("Profile action", choices=["list", "show", "delete"], default="list")
+                profile_action = Prompt.ask(tr("Accion de perfil"), choices=["list", "show", "delete"], default="list")
                 if profile_action == "list":
                     cmd_profile_list(SimpleNamespace())
                 elif profile_action == "show":
-                    name = Prompt.ask("Profile name")
+                    name = Prompt.ask(tr("Nombre del perfil"))
                     cmd_profile_show(SimpleNamespace(name=name))
                 else:
-                    name = Prompt.ask("Profile name")
+                    name = Prompt.ask(tr("Nombre del perfil"))
                     cmd_profile_delete(SimpleNamespace(name=name))
             elif action == "settings":
                 cmd_settings(SimpleNamespace(settings_path=DEFAULT_SETTINGS_STORE, show=False, set=[]))
@@ -3053,12 +3075,12 @@ def cmd_ui(args) -> None:
             elif action == "keygen":
                 cmd_keygen(SimpleNamespace(key=args.key))
             elif action == "rekey":
-                all_local = Confirm.ask("Rekey all local bundles?", default=True)
-                packages = [] if all_local else [str(path) for path in choose_bundle_paths("Rekey")]
+                all_local = Confirm.ask(tr("Rekey todos los bundles locales?"), default=True)
+                packages = [] if all_local else [str(path) for path in choose_bundle_paths(tr("Rekey"))]
                 cmd_rekey(SimpleNamespace(key=args.key, packages=packages, all_local=all_local, no_backup=False, yes=True))
             elif action == "delete":
-                all_local = Confirm.ask("Delete all local bundles?", default=False)
-                packages = [] if all_local else [str(path) for path in choose_bundle_paths("Delete")]
+                all_local = Confirm.ask(tr("Borrar todos los bundles locales?"), default=False)
+                packages = [] if all_local else [str(path) for path in choose_bundle_paths(tr("Borrar"))]
                 cmd_delete(SimpleNamespace(packages=packages, all_local=all_local, yes=True))
         except SystemExit:
             pass
