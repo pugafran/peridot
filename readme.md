@@ -45,6 +45,38 @@ Los payloads contienen el contenido real de cada fichero, comprimido con `zstd` 
 
 ## Instalacion
 
+### Windows (recomendado): pipx
+
+`pipx` instala CLIs de Python en un entorno aislado y te deja el comando en PATH.
+
+1) Instala **Python 3.11+** (desde python.org o Microsoft Store) y asegúrate de que está en PATH.
+2) Instala `pipx`:
+
+```powershell
+python -m pip install --user pipx
+python -m pipx ensurepath
+```
+
+Cierra y vuelve a abrir la terminal.
+
+3) Instala Peridot:
+
+Si está publicado en PyPI:
+
+```powershell
+pipx install peridot-cli
+peridot --version
+```
+
+Si quieres instalarlo desde GitHub:
+
+```powershell
+pipx install "git+https://github.com/pugafran/peridot.git"
+peridot --version
+```
+
+### macOS / Linux
+
 Recomendado (modo dev, con tests):
 
 ```bash
