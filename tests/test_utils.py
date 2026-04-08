@@ -66,7 +66,6 @@ def test_should_exclude_entry_filters_common_basenames_outside_home(tmp_path):
     assert peridot.should_exclude_entry(tmp_path / ".cache" / "foo.txt") is True
     assert peridot.should_exclude_entry(tmp_path / "regular" / "file.txt") is False
 
-
 def test_load_profiles_rejects_non_dict(tmp_path):
     profiles_path = tmp_path / "profiles.json"
     profiles_path.write_text("[]\n")
