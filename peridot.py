@@ -100,7 +100,7 @@ SENSITIVE_PATTERNS = (
 DEFAULT_SETTINGS = {
     "compression_level": DEFAULT_COMPRESSION_LEVEL,
     "jobs": DEFAULT_JOBS,
-    "language": "es",
+    "language": "en",
 }
 ENCRYPTION_ALGORITHM = "aes-gcm"
 INCOMPRESSIBLE_SUFFIXES = {
@@ -136,7 +136,7 @@ INCOMPRESSIBLE_SUFFIXES = {
 
 PRIMARY_COMPRESSION = "zstd"
 FALLBACK_COMPRESSION = "gzip"
-CURRENT_LANGUAGE = "es"
+CURRENT_LANGUAGE = "en"
 
 TRANSLATIONS = {
     "en": {
@@ -412,6 +412,35 @@ def detect_runtime_language() -> str:
     except Exception:
         pass
     return DEFAULT_SETTINGS["language"]
+
+
+def detect_system_language_hint() -> str | None:
+    """Best-effort guess for the OS/UI language.
+
+    Used only to *suggest* switching language; it should never override user
+    settings.
+    """
+
+    candidates = [
+        os.environ.get("LC_ALL"),
+        os.environ.get("LANG"),
+        os.environ.get("LANGUAGE"),
+    ]
+    for raw in candidates:
+        if not raw:
+            continue
+        base = sanitize_language(raw)
+        if base:
+            return base
+    try:
+        import locale
+
+        loc, _enc = locale.getdefaultlocale()  # type: ignore[attr-defined]
+        if loc:
+            return sanitize_language(loc)
+    except Exception:
+        pass
+    return None
 
 
 def tr(text: str) -> str:
@@ -3393,7 +3422,29 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Iterable[str] | None = None) -> None:
-    set_current_language(detect_runtime_language())
+    # Default to English, but allow overriding via settings or PERIDOT_LANG.
+    runtime_lang = detect_runtime_language()
+    set_current_language(runtime_lang)
+
+    # If the system language looks Spanish but Peridot is running in English by
+    # default (no explicit settings), suggest switching.
+    try:
+        settings_path = DEFAULT_SETTINGS_STORE
+        has_settings = settings_path.exists()
+    except Exception:
+        has_settings = False
+
+    if (
+        runtime_lang == "en"
+        and not os.environ.get("PERIDOT_LANG")
+        and not has_settings
+        and (detect_system_language_hint() or "").startswith("es")
+    ):
+        console.print(
+            "[dim]Tip: your system language looks Spanish. You can switch Peridot UI/CLI with "
+            "PERIDOT_LANG=es or via the Settings UI.[/dim]"
+        )
+
     parser = build_parser()
     args = parser.parse_args(argv)
     args.func(args)
