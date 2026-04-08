@@ -1358,11 +1358,23 @@ def source_root_for_path(path: Path) -> Path:
 
 
 def should_exclude_entry(path: Path) -> bool:
+    """Return True when a discovered path should be excluded from packing.
+
+    The default rules are anchored to the user's home directory because Peridot
+    mostly targets dotfiles, but we also apply a conservative basename-based
+    filter for paths outside $HOME (e.g. when packing from /tmp or /etc).
+    """
+
     home = Path.home()
     try:
         relative = path.relative_to(home).as_posix()
     except ValueError:
-        return False
+        # Outside $HOME: fall back to excluding well-known junk basenames
+        # anywhere in the path.
+        excluded_basenames = {
+            Path(excluded).name for excluded in DEFAULT_EXCLUDES if "/" not in excluded
+        }
+        return any(part in excluded_basenames for part in path.parts)
 
     for excluded in DEFAULT_EXCLUDES:
         if relative == excluded or relative.startswith(f"{excluded}/"):
