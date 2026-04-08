@@ -1,13 +1,8 @@
 # Peridot MCP (Model Context Protocol)
 
-Este directorio documenta el servidor MCP de Peridot.
+Servidor MCP (stdio) que expone Peridot como un conjunto de *tools* para que una IA pueda gestionar Peridot sin que el usuario aprenda el CLI.
 
-Objetivo: exponer Peridot como un conjunto de *tools* para que un agente (IA) pueda:
-- inicializar (`peridot_init`)
-- listar presets (`peridot_presets_list`)
-- obtener versión (`peridot_version`)
-
-sin que el usuario tenga que aprender el CLI.
+Peridot sirve para **empaquetar, cifrar (AES-GCM) y comprimir** dotfiles/ficheros de configuración en un bundle `.peridot`, inspeccionarlo/verificarlo y aplicarlo en otra máquina de forma segura.
 
 ## Ejecutar
 
