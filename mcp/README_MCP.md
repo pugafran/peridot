@@ -1,30 +1,30 @@
 # Peridot MCP (Model Context Protocol)
 
-Servidor MCP (stdio) que expone Peridot como un conjunto de *tools* para que una IA pueda gestionar Peridot sin que el usuario aprenda el CLI.
+A stdio MCP server that exposes Peridot as a set of tools so an AI agent can use Peridot without the user having to learn the CLI.
 
-Peridot sirve para **empaquetar, cifrar (AES-GCM) y comprimir** dotfiles/ficheros de configuración en un bundle `.peridot`, inspeccionarlo/verificarlo y aplicarlo en otra máquina de forma segura.
+Peridot is a secure dotfiles/config manager: it **packages, encrypts (AES-GCM), and compresses** configuration files into a `.peridot` bundle, and can then inspect/verify/diff and apply it on another machine safely.
 
-## Ejecutar
+## Run
 
-Instalado via pipx/pip:
+When installed via pipx/pip:
 
 ```bash
 peridot-mcp
 ```
 
-o directamente con Python:
+or directly with Python:
 
 ```bash
 python -m peridot_mcp
 ```
 
-## Protocolo
+## Protocol
 
-Servidor stdio (JSON-RPC) con métodos:
+Stdio JSON-RPC with:
 - `initialize`
 - `tools/list`
 - `tools/call`
 
-## Nota de seguridad
+## Security note
 
-En el MVP, no se expone `apply` real. Cuando se implemente, será **opt-in** y requerirá confirmación explícita.
+`peridot_apply` is guarded and requires explicit confirmation (`confirm=true`). Use `peridot_apply_dry_run` first.
