@@ -10,6 +10,8 @@ def test_detect_shell_prefers_powershell_when_psmodulepath_present(monkeypatch):
 
 
 def test_detect_shell_cmd_when_comspec_cmd(monkeypatch):
+    # Simulate a Windows-like environment (no SHELL).
+    monkeypatch.delenv("SHELL", raising=False)
     monkeypatch.delenv("PSModulePath", raising=False)
     monkeypatch.setenv("COMSPEC", "C:/Windows/System32/cmd.exe")
     assert peridot.detect_shell() == "cmd"
