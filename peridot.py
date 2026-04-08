@@ -2253,6 +2253,7 @@ def cmd_apply(args) -> None:
     backup_dir = args.backup_dir.expanduser() if args.backup_dir else None
 
     transactional = getattr(args, "transactional", True)
+    verify_write = getattr(args, "verify", True)
 
     overwritten = 0
     restored = 0
@@ -2331,6 +2332,19 @@ def cmd_apply(args) -> None:
                         if transactional:
                             rollback(f"write failed: {exc}")
                         raise
+
+                    if verify_write:
+                        try:
+                            written = target_path.read_bytes()
+                        except Exception as exc:
+                            if transactional:
+                                rollback(f"verify read failed: {exc}")
+                            raise
+                        if hashlib.sha256(written).hexdigest() != file_entry["sha256"]:
+                            msg = f"Hash mismatch after write: {file_entry['path']}"
+                            if transactional:
+                                rollback(msg)
+                            die(msg)
 
                     try:
                         target_path.chmod(file_entry["mode"])
@@ -2992,6 +3006,8 @@ def build_parser() -> argparse.ArgumentParser:
     apply_parser.add_argument("--backup-dir", type=Path, help="Si existe el fichero, guarda una copia antes de sobrescribir")
     apply_parser.add_argument("--transactional", dest="transactional", action="store_true", default=True, help="Rollback best-effort si falla a mitad (por defecto activado)")
     apply_parser.add_argument("--no-transactional", dest="transactional", action="store_false", help="Desactiva rollback transaccional")
+    apply_parser.add_argument("--verify", dest="verify", action="store_true", default=True, help="Verifica hash tras escribir (por defecto activado)")
+    apply_parser.add_argument("--no-verify", dest="verify", action="store_false", help="Desactiva verificacion post-escritura")
     apply_parser.add_argument("--dry-run", action="store_true", help="Muestra lo que se haria sin escribir")
     apply_parser.add_argument("--ignore-platform", action="store_true", help="Aplica incluso si el target del bundle no coincide con la maquina actual")
     apply_parser.add_argument("--select", action="append", default=[], help="Path exacto dentro del bundle a restaurar. Repetible.")
