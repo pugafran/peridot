@@ -2153,7 +2153,8 @@ def cmd_keygen(args) -> None:
 
 
 def cmd_pack(args) -> None:
-    print_banner()
+    if not getattr(args, "json", False):
+        print_banner()
     args.exclude = getattr(args, "exclude", [])
     args.notes = getattr(args, "notes", "")
     args.after_steps = getattr(args, "after_steps", [])
@@ -2165,14 +2166,18 @@ def cmd_pack(args) -> None:
     if not paths:
         die("No hay rutas para empaquetar. Pasa rutas explicitas o prepara tu HOME.")
 
-    with Progress(
-        SpinnerColumn(style="cyan"),
-        TextColumn("[progress.description]{task.description}"),
-        TextColumn("{task.fields[file_count]} files"),
-        TextColumn("[dim]{task.fields[current_path]}[/dim]"),
-        TimeElapsedColumn(),
-        console=console,
-    ) as scan_progress:
+    scan_progress = None
+    scan_task = None
+    if not getattr(args, "json", False):
+        scan_progress = Progress(
+            SpinnerColumn(style="cyan"),
+            TextColumn("[progress.description]{task.description}"),
+            TextColumn("{task.fields[file_count]} files"),
+            TextColumn("[dim]{task.fields[current_path]}[/dim]"),
+            TimeElapsedColumn(),
+            console=console,
+        )
+        scan_progress.__enter__()
         scan_task = scan_progress.add_task(
             tr("Scanning files"),
             total=None,
@@ -2189,6 +2194,10 @@ def cmd_pack(args) -> None:
 
         entries = filter_entries(collect_files(paths, progress_callback=update_scan), args.exclude)
         scan_progress.update(scan_task, description=tr("Scanning files done"), current_path="")
+        scan_progress.__exit__(None, None, None)
+    if getattr(args, "json", False):
+        entries = filter_entries(collect_files(paths), args.exclude)
+
     if not entries:
         die("No se encontro ningun archivo exportable.")
     sensitive_entries = detect_sensitive_entries(entries)
@@ -2209,7 +2218,7 @@ def cmd_pack(args) -> None:
     requested_jobs = args.jobs
     initial_jobs, preflight_reason = safe_pack_jobs(entries, args.jobs)
     args.jobs = initial_jobs
-    if initial_jobs < requested_jobs:
+    if initial_jobs < requested_jobs and not getattr(args, "json", False):
         console.print(
             f"[yellow]{tr('Adaptive pack:')}[/yellow] {trf('reduciendo ventana inicial de {requested} a {initial} ({reason}). Puede volver a subir si la memoria acompana.', requested=requested_jobs, initial=initial_jobs, reason=preflight_reason)}"
         )
@@ -2220,17 +2229,22 @@ def cmd_pack(args) -> None:
     # Write payloads directly into the ZIP as they are produced.
     # This avoids writing encrypted payloads to disk first (big speed win on slow I/O).
     with ZipFile(tmp_output, "w", compression=ZIP_STORED) as bundle:
-        with Progress(
-            SpinnerColumn(style="green"),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(bar_width=30),
-            TextColumn("{task.fields[file_count]}/{task.fields[file_total]} files"),
-            TextColumn("[dim]{task.fields[worker_status]}[/dim]"),
-            TextColumn("{task.percentage:>3.0f}%"),
-            TimeElapsedColumn(),
-            TimeRemainingColumn(),
-            console=console,
-        ) as progress:
+        progress_ctx = None
+        progress = None
+        task = None
+        if not getattr(args, "json", False):
+            progress_ctx = Progress(
+                SpinnerColumn(style="green"),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(bar_width=30),
+                TextColumn("{task.fields[file_count]}/{task.fields[file_total]} files"),
+                TextColumn("[dim]{task.fields[worker_status]}[/dim]"),
+                TextColumn("{task.percentage:>3.0f}%"),
+                TimeElapsedColumn(),
+                TimeRemainingColumn(),
+                console=console,
+            )
+            progress = progress_ctx.__enter__()
             task = progress.add_task(
                 "Packing",
                 total=total_bytes or len(entries),
@@ -2240,7 +2254,7 @@ def cmd_pack(args) -> None:
             )
 
             executor, executor_mode = create_pack_executor(requested_jobs)
-            if executor_mode == "threads-fallback":
+            if executor_mode == "threads-fallback" and not getattr(args, "json", False):
                 console.print(
                     f"[yellow]{tr('Adaptive pack:')}[/yellow] {tr('Process pool no disponible en este sistema; usando threads.')}"  # noqa: E501
                 )
@@ -2279,12 +2293,13 @@ def cmd_pack(args) -> None:
 
                         files_manifest.append(record)
                         completed_files += 1
-                        progress.update(
-                            task,
-                            advance=record["size"],
-                            file_count=completed_files,
-                            worker_status=f"active {inflight_limit}/{requested_jobs} | {pressure_label}",
-                        )
+                        if progress is not None and task is not None:
+                            progress.update(
+                                task,
+                                advance=record["size"],
+                                file_count=completed_files,
+                                worker_status=f"active {inflight_limit}/{requested_jobs} | {pressure_label}",
+                            )
 
                     previous_limit = inflight_limit
                     inflight_limit, pressure_label = adaptive_next_inflight_limit(inflight_limit, requested_jobs)
@@ -2303,7 +2318,8 @@ def cmd_pack(args) -> None:
                                 current=inflight_limit,
                                 label=pressure_label,
                             )
-                        console.print(f"[dim]{tr('Adaptive pack:')}[/dim] {detail}")
+                        if not getattr(args, "json", False):
+                            console.print(f"[dim]{tr('Adaptive pack:')}[/dim] {detail}")
                     while next_index <= len(entries) and len(pending) < inflight_limit:
                         submit_one(next_index, entries[next_index - 1])
                         next_index += 1
@@ -2318,6 +2334,20 @@ def cmd_pack(args) -> None:
 
     # Atomic-ish replace.
     tmp_output.replace(output)
+
+    if getattr(args, "json", False):
+        payload = {
+            "output": str(output),
+            "tmp_output": str(tmp_output),
+            "files": len(entries),
+            "payload_bytes": int(total_bytes),
+            "sensitive_files": int(len(sensitive_entries)),
+            "key_fingerprint": str(args.key_fingerprint),
+            "history_snapshot": str(history_snapshot) if history_snapshot else None,
+            "manifest": manifest,
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
 
     render_bundle_card(manifest, output)
     if history_snapshot:
@@ -3282,6 +3312,7 @@ def build_parser() -> argparse.ArgumentParser:
     pack_parser.add_argument("--after-step", dest="after_steps", action="append", default=[], help="Paso post-apply. Repetible.")
     pack_parser.add_argument("--compression-level", type=int, default=None, choices=range(0, 10), help="Nivel de compresion Peridot: zstd si esta disponible, gzip como fallback. 0 rapido, 9 pequeno. Si no se pasa, usa settings.")
     pack_parser.add_argument("--jobs", type=int, default=None, help="Numero de workers para pack. Si no se pasa, usa settings.")
+    pack_parser.add_argument("--json", action="store_true", help="Structured JSON output (no banner/tables)")
     pack_parser.add_argument("-y", "--yes", action="store_true", help="Aceptar avisos sensibles sin confirmacion")
     pack_parser.set_defaults(func=cmd_pack)
 

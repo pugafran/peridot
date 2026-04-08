@@ -322,7 +322,7 @@ def _handle_tools_call(params: JSON) -> JSON:
         payload = _tool_peridot_init(force=bool(arguments.get("force", False)))
 
     elif name == "peridot_pack":
-        argv = ["pack"]
+        argv = ["pack", "--json"]
         if arguments.get("name"):
             argv.append(str(arguments["name"]))
         if arguments.get("preset"):
