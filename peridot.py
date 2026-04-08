@@ -1744,8 +1744,11 @@ def prepare_pack_inputs(args) -> tuple[list[Path], Path]:
         if missing_core or not args.paths:
             return interactive_pack_setup(args)
 
+    # Non-interactive defaults: avoid hard-failing when running from scripts/CI.
     if not args.name:
-        die("Falta el nombre del bundle. Ejecuta 'peridot pack' en terminal interactiva o pasa el nombre.")
+        args.name = f"{platform.node() or 'my'}-{normalize_os_name(args.platform)}-bundle"
+    if args.description is None:
+        args.description = ""
 
     paths = [Path(item).expanduser() for item in args.paths] if args.paths else default_export_roots()
     output = args.output or Path(f"{slugify(args.name)}.peridot")
