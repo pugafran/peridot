@@ -2169,15 +2169,25 @@ def cmd_bench(args) -> None:
                         }
                     )
 
+    input_bytes = file_count * size_kb * 1024
+
     # Print a compact summary.
     console.print("\n[bold]Bench results[/bold]")
     for row in results:
+        mb_s = (input_bytes / 1_000_000) / max(0.0001, float(row["seconds"]))
+        ratio = float(row["output_bytes"]) / max(1.0, float(input_bytes))
         console.print(
-            f"- level={row['level']} jobs={row['jobs']} run={row['run']} -> {row['seconds']}s | {format_bytes(int(row['output_bytes']))}"
+            f"- level={row['level']} jobs={row['jobs']} run={row['run']} -> {row['seconds']}s | in={format_bytes(int(input_bytes))} | out={format_bytes(int(row['output_bytes']))} | {mb_s:.1f} MB/s | ratio={ratio:.2f}"
         )
 
     if args.json:
-        print(json.dumps({"results": results}, indent=2))
+        payload = {
+            "input_bytes": input_bytes,
+            "files": file_count,
+            "size_kb": size_kb,
+            "results": results,
+        }
+        print(json.dumps(payload, indent=2))
 
 
 def cmd_inspect(args) -> None:

@@ -26,3 +26,4 @@ def test_bench_smoke(tmp_path: Path, capsys):
     )
     out = capsys.readouterr().out
     assert "Bench results" in out
+    assert "MB/s" in out
