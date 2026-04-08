@@ -32,6 +32,8 @@ def test_sanitize_language_accepts_locales():
     assert peridot.sanitize_language("es-ES") == "es"
     assert peridot.sanitize_language("en_US") == "en"
     assert peridot.sanitize_language("EN-us") == "en"
+    assert peridot.sanitize_language("es_ES.UTF-8") == "es"
+    assert peridot.sanitize_language("en_US.UTF8") == "en"
 
 
 def test_sanitize_language_falls_back_to_default():

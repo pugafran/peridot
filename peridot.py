@@ -480,7 +480,9 @@ def sanitize_language(value: object) -> str:
     "es-ES", "en_US" or "EN-us" by reducing them to the base language.
     """
 
-    raw = str(value or DEFAULT_SETTINGS["language"]).strip().lower().replace("_", "-")
+    raw = str(value or DEFAULT_SETTINGS["language"]).strip().lower()
+    # Strip common locale suffixes such as ".UTF-8" or "@euro".
+    raw = raw.split(".", 1)[0].split("@", 1)[0].replace("_", "-")
     if raw in {"es", "en"}:
         return raw
 
