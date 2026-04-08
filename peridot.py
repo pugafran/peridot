@@ -2214,14 +2214,21 @@ def cmd_bench(args) -> None:
             f"- level={row['level']} jobs={row['jobs']} run={row['run']} -> {row['seconds']}s | in={format_bytes(int(input_bytes))} | out={format_bytes(int(row['output_bytes']))} | {mb_s:.1f} MB/s | ratio={ratio:.2f}"
         )
 
-    if args.json:
+    if args.json or getattr(args, "out", None):
         payload = {
             "input_bytes": input_bytes,
             "files": file_count,
             "size_kb": size_kb,
             "results": results,
         }
-        print(json.dumps(payload, indent=2))
+        rendered = json.dumps(payload, indent=2)
+        if getattr(args, "out", None):
+            out_path = Path(args.out).expanduser()
+            ensure_parent(out_path)
+            out_path.write_text(rendered + "\n", encoding="utf-8")
+            console.print(f"[dim]Saved bench JSON to {out_path}[/dim]")
+        if args.json:
+            print(rendered)
 
 
 def cmd_inspect(args) -> None:
@@ -3035,6 +3042,7 @@ def build_parser() -> argparse.ArgumentParser:
     bench_parser.add_argument("--levels", default="0,1,3", help="Niveles de compresion separados por coma")
     bench_parser.add_argument("--jobs", type=int, default=DEFAULT_JOBS, help="Workers para pack")
     bench_parser.add_argument("--json", action="store_true", help="Imprime tambien JSON con resultados")
+    bench_parser.add_argument("--out", type=Path, help="Guarda el JSON en un fichero")
     bench_parser.set_defaults(func=cmd_bench)
 
     inspect_parser = subparsers.add_parser("inspect", help="Muestra la ficha de un paquete")
