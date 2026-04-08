@@ -2195,11 +2195,19 @@ def cmd_inspect(args) -> None:
         print_manifest_json(manifest)
 
 
-def backup_existing_file(source: Path, backup_dir: Path, home_target: Path) -> None:
+def backup_existing_file(source: Path, backup_dir: Path, home_target: Path) -> Path:
     relative = source.relative_to(home_target)
     backup_path = backup_dir / relative
     ensure_parent(backup_path)
     shutil.copy2(source, backup_path)
+    return backup_path
+
+
+@dataclass
+class ApplyChange:
+    target_path: Path
+    existed: bool
+    backup_path: Path | None
 
 
 def cmd_apply(args) -> None:
@@ -2244,40 +2252,100 @@ def cmd_apply(args) -> None:
     target_root = args.target.expanduser()
     backup_dir = args.backup_dir.expanduser() if args.backup_dir else None
 
+    transactional = getattr(args, "transactional", True)
+
     overwritten = 0
     restored = 0
+    changes: list[ApplyChange] = []
+
+    def rollback(reason: str) -> None:
+        if not changes:
+            return
+        console.print(f"[yellow]{'Aviso' if CURRENT_LANGUAGE == 'es' else 'Warning'}:[/yellow] rollback: {reason}")
+        # Reverse order: last write first.
+        for change in reversed(changes):
+            try:
+                if change.existed and change.backup_path and change.backup_path.exists():
+                    ensure_parent(change.target_path)
+                    shutil.copy2(change.backup_path, change.target_path)
+                elif not change.existed:
+                    if change.target_path.exists():
+                        change.target_path.unlink()
+            except Exception:
+                # Best effort rollback.
+                pass
+
     total_bytes = sum(entry["size"] for entry in filtered_manifest["files"])
-    with ZipFile(args.package) as bundle:
-        with Progress(
-            SpinnerColumn(style="green"),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(bar_width=30),
-            TextColumn("{task.fields[file_count]}/{task.fields[file_total]} files"),
-            TextColumn("{task.percentage:>3.0f}%"),
-            TimeElapsedColumn(),
-            TimeRemainingColumn(),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Applying", total=total_bytes or len(filtered_manifest["files"]), file_count=0, file_total=len(filtered_manifest["files"]))
-            for file_entry in filtered_manifest["files"]:
-                target_path = target_root / file_entry["path"]
-                ensure_parent(target_path)
-                if target_path.exists() and backup_dir:
-                    backup_existing_file(target_path, backup_dir, target_root)
-                    overwritten += 1
-                try:
-                    encrypted = bundle.read(file_entry["payload"])
-                    payload = decrypt_payload(encrypted, file_entry, key)
-                    raw = inflate_payload(payload, file_entry.get("compression"))
-                except ValueError:
-                    die(tr("La clave no coincide con el paquete."))
-                target_path.write_bytes(raw)
-                try:
-                    target_path.chmod(file_entry["mode"])
-                except OSError:
-                    pass
-                restored += 1
-                progress.update(task, advance=file_entry["size"], file_count=restored)
+
+    # If transactional and user didn't request backups, use a temporary backup dir.
+    temp_backup_ctx = TemporaryDirectory() if transactional and not backup_dir else None
+    try:
+        if temp_backup_ctx is not None:
+            backup_dir = Path(temp_backup_ctx.name)
+
+        if backup_dir:
+            backup_dir.mkdir(parents=True, exist_ok=True)
+
+        with ZipFile(args.package) as bundle:
+            with Progress(
+                SpinnerColumn(style="green"),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(bar_width=30),
+                TextColumn("{task.fields[file_count]}/{task.fields[file_total]} files"),
+                TextColumn("{task.percentage:>3.0f}%"),
+                TimeElapsedColumn(),
+                TimeRemainingColumn(),
+                console=console,
+            ) as progress:
+                task = progress.add_task(
+                    "Applying",
+                    total=total_bytes or len(filtered_manifest["files"]),
+                    file_count=0,
+                    file_total=len(filtered_manifest["files"]),
+                )
+                for file_entry in filtered_manifest["files"]:
+                    target_path = target_root / file_entry["path"]
+                    ensure_parent(target_path)
+
+                    existed = target_path.exists()
+                    backup_path = None
+                    if existed and backup_dir:
+                        backup_path = backup_existing_file(target_path, backup_dir, target_root)
+                        overwritten += 1
+
+                    # Track this change so we can rollback on failure.
+                    changes.append(ApplyChange(target_path=target_path, existed=existed, backup_path=backup_path))
+
+                    try:
+                        encrypted = bundle.read(file_entry["payload"])
+                        payload = decrypt_payload(encrypted, file_entry, key)
+                        raw = inflate_payload(payload, file_entry.get("compression"))
+                    except ValueError:
+                        if transactional:
+                            rollback(tr("La clave no coincide con el paquete."))
+                        die(tr("La clave no coincide con el paquete."))
+
+                    try:
+                        target_path.write_bytes(raw)
+                    except Exception as exc:
+                        if transactional:
+                            rollback(f"write failed: {exc}")
+                        raise
+
+                    try:
+                        target_path.chmod(file_entry["mode"])
+                    except OSError:
+                        pass
+                    restored += 1
+                    progress.update(task, advance=file_entry["size"], file_count=restored)
+
+    except Exception as exc:
+        if transactional:
+            rollback(f"exception: {exc}")
+        raise
+    finally:
+        if temp_backup_ctx is not None:
+            temp_backup_ctx.cleanup()
 
     footer = Table.grid(padding=(0, 2))
     footer.add_row("Target", str(target_root))
@@ -2922,6 +2990,8 @@ def build_parser() -> argparse.ArgumentParser:
     apply_parser.add_argument("package", type=Path, help="Ruta del paquete .peridot")
     apply_parser.add_argument("--target", type=Path, default=Path.home(), help="Directorio destino para la restauracion")
     apply_parser.add_argument("--backup-dir", type=Path, help="Si existe el fichero, guarda una copia antes de sobrescribir")
+    apply_parser.add_argument("--transactional", dest="transactional", action="store_true", default=True, help="Rollback best-effort si falla a mitad (por defecto activado)")
+    apply_parser.add_argument("--no-transactional", dest="transactional", action="store_false", help="Desactiva rollback transaccional")
     apply_parser.add_argument("--dry-run", action="store_true", help="Muestra lo que se haria sin escribir")
     apply_parser.add_argument("--ignore-platform", action="store_true", help="Aplica incluso si el target del bundle no coincide con la maquina actual")
     apply_parser.add_argument("--select", action="append", default=[], help="Path exacto dentro del bundle a restaurar. Repetible.")
