@@ -2,6 +2,8 @@
 
 # Peridot
 
+![CI](https://github.com/pugafran/peridot/actions/workflows/ci.yml/badge.svg)
+
 Current release: `0.3.0`. See `CHANGELOG.md` for release notes.
 
 Peridot es una herramienta de terminal para empaquetar configuraciones en bundles `.peridot`, inspeccionarlos antes de aplicar nada y restaurarlos en otra maquina con una UX visual cuidada.
@@ -42,6 +44,16 @@ my-setup.peridot
 Los payloads contienen el contenido real de cada fichero, comprimido con `zstd` cuando compensa y con fallback a `gzip` si ese Python no tiene `zstandard`, y cifrado con `AES-GCM`.
 
 ## Instalacion
+
+Recomendado (modo dev, con tests):
+
+```bash
+./install.sh
+# opcional: instala dependencias de desarrollo (pytest, etc.)
+PERIDOT_INSTALL_DEV=1 ./install.sh
+
+peridot --version
+```
 
 Con `pip`:
 
