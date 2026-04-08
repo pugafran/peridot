@@ -1343,14 +1343,30 @@ def detect_sensitive_entries(entries: list[FileEntry]) -> list[FileEntry]:
 
 
 def inflate_payload(payload: bytes, compression: str | None) -> bytes:
-    if compression in {None, "", "gzip"}:
+    """Inflate a payload according to the manifest's compression metadata.
+
+    Notes:
+        Older/hand-crafted manifests might omit the compression field.
+        In that case we try gzip first and fall back to raw bytes.
+    """
+
+    if compression in {None, ""}:
+        try:
+            return gzip.decompress(payload)
+        except OSError:
+            return payload
+
+    if compression == "gzip":
         return gzip.decompress(payload)
+
     if compression == "zstd":
         if zstd is None:
             die("Este paquete usa zstd pero falta la dependencia 'zstandard' en este Python.")
         return zstd.ZstdDecompressor().decompress(payload)
+
     if compression == "none":
         return payload
+
     die(f"Metodo de compresion no soportado: {compression}")
 
 
