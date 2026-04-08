@@ -40,6 +40,7 @@ Changelog = "https://github.com/pugafran/peridot/blob/main/CHANGELOG.md"
 
 [project.scripts]
 peridot = "peridot:main"
+peridot-mcp = "peridot_mcp:main"
 
 [project.optional-dependencies]
 dev = [
@@ -47,4 +48,4 @@ dev = [
 ]
 
 [tool.setuptools]
-py-modules = ["peridot"]
+py-modules = ["peridot", "peridot_mcp"]
