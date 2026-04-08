@@ -1974,10 +1974,12 @@ def cmd_pack(args) -> None:
             f"[yellow]{tr('Adaptive pack:')}[/yellow] {trf('reduciendo ventana inicial de {requested} a {initial} ({reason}). Puede volver a subir si la memoria acompana.', requested=requested_jobs, initial=initial_jobs, reason=preflight_reason)}"
         )
 
-    with TemporaryDirectory() as tmp_dir_name:
-        payload_root = Path(tmp_dir_name) / "payloads"
-        payload_root.mkdir(parents=True, exist_ok=True)
+    ensure_parent(output)
+    tmp_output = output.with_suffix(output.suffix + ".tmp")
 
+    # Write payloads directly into the ZIP as they are produced.
+    # This avoids writing encrypted payloads to disk first (big speed win on slow I/O).
+    with ZipFile(tmp_output, "w", compression=ZIP_STORED) as bundle:
         with Progress(
             SpinnerColumn(style="green"),
             TextColumn("[progress.description]{task.description}"),
@@ -1999,7 +2001,9 @@ def cmd_pack(args) -> None:
 
             executor, executor_mode = create_pack_executor(requested_jobs)
             if executor_mode == "threads-fallback":
-                console.print(f"[yellow]{tr('Adaptive pack:')}[/yellow] {tr('Process pool no disponible en este sistema; usando threads.')}")
+                console.print(
+                    f"[yellow]{tr('Adaptive pack:')}[/yellow] {tr('Process pool no disponible en este sistema; usando threads.')}"  # noqa: E501
+                )
             with executor:
                 pending: dict = {}
                 next_index = 1
@@ -2029,7 +2033,10 @@ def cmd_pack(args) -> None:
                     for future in done:
                         entry, payload_name = pending.pop(future)
                         encrypted, record = future.result()
-                        (payload_root / payload_name).write_bytes(encrypted)
+
+                        # Write payload directly into the bundle.
+                        bundle.writestr(record["payload"], encrypted)
+
                         files_manifest.append(record)
                         completed_files += 1
                         progress.update(
@@ -2043,9 +2050,19 @@ def cmd_pack(args) -> None:
                     inflight_limit, pressure_label = adaptive_next_inflight_limit(inflight_limit, requested_jobs)
                     if inflight_limit != previous_limit:
                         if inflight_limit > previous_limit:
-                            detail = trf("subiendo ventana activa {previous} -> {current} ({label}).", previous=previous_limit, current=inflight_limit, label=pressure_label)
+                            detail = trf(
+                                "subiendo ventana activa {previous} -> {current} ({label}).",
+                                previous=previous_limit,
+                                current=inflight_limit,
+                                label=pressure_label,
+                            )
                         else:
-                            detail = trf("bajando ventana activa {previous} -> {current} ({label}).", previous=previous_limit, current=inflight_limit, label=pressure_label)
+                            detail = trf(
+                                "bajando ventana activa {previous} -> {current} ({label}).",
+                                previous=previous_limit,
+                                current=inflight_limit,
+                                label=pressure_label,
+                            )
                         console.print(f"[dim]{tr('Adaptive pack:')}[/dim] {detail}")
                     while next_index <= len(entries) and len(pending) < inflight_limit:
                         submit_one(next_index, entries[next_index - 1])
@@ -2053,11 +2070,14 @@ def cmd_pack(args) -> None:
 
         files_manifest.sort(key=lambda item: item["path"])
         manifest = build_manifest(args, files_manifest, [str(path) for path in paths])
-        ensure_parent(output)
-        with ZipFile(output, "w", compression=ZIP_STORED) as bundle:
-            bundle.writestr("manifest.json", json.dumps(manifest, indent=2, sort_keys=True) + "\n", compress_type=ZIP_DEFLATED)
-            for file_entry in files_manifest:
-                bundle.write(payload_root / Path(file_entry["payload"]).name, file_entry["payload"])
+        bundle.writestr(
+            "manifest.json",
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+            compress_type=ZIP_DEFLATED,
+        )
+
+    # Atomic-ish replace.
+    tmp_output.replace(output)
 
     render_bundle_card(manifest, output)
     if history_snapshot:
