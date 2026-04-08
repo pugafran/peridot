@@ -765,18 +765,24 @@ def fingerprint_key(key: bytes) -> str:
     return hashlib.sha256(key).hexdigest()[:16]
 
 
-def decode_aesgcm_key_bytes(raw: bytes) -> bytes | None:
-    """Decode a 32-byte AES-GCM key from raw bytes or base64url.
+def decode_aesgcm_key_bytes(raw: bytes | str) -> bytes | None:
+    """Decode a 32-byte AES-GCM key from raw bytes, text, or base64url.
 
     Accepts:
     - Raw 32 bytes
-    - base64url-encoded bytes (with or without padding, with optional newlines)
+    - base64url-encoded bytes (with or without padding, with optional whitespace/newlines)
+    - A string containing either of the above (UTF-8)
     """
 
-    if len(raw) == 32:
-        return raw
+    if isinstance(raw, str):
+        raw_bytes = raw.encode("utf-8")
+    else:
+        raw_bytes = raw
 
-    cleaned = b"".join(raw.split())
+    if len(raw_bytes) == 32:
+        return raw_bytes
+
+    cleaned = b"".join(raw_bytes.split())
     if not cleaned:
         return None
 
