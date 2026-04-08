@@ -4,7 +4,7 @@
 
 ![CI](https://github.com/pugafran/peridot/actions/workflows/ci.yml/badge.svg)
 
-Current release: `0.3.0`. See `CHANGELOG.md` for release notes.
+Current release: `0.4.0`. See `CHANGELOG.md` for release notes.
 
 Peridot es una herramienta de terminal para empaquetar configuraciones en bundles `.peridot`, inspeccionarlos antes de aplicar nada y restaurarlos en otra maquina con una UX visual cuidada.
 

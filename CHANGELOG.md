@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 - 2026-04-08
+
+- pack: significant speedup by writing encrypted payloads directly into the output ZIP (avoids temp payload files).
+- pack: smarter compression heuristics (skip compression for high-entropy payloads).
+- apply: transactional rollback (best-effort) + verify-on-write (hash check after writing; rollback on mismatch).
+- cli: new commands `init` (bootstrap key + settings) and `bench` (benchmarks with throughput/ratio + JSON output).
+- ci: expanded GitHub Actions matrix (linux/macos/windows × Python 3.11/3.12) using editable install + dev extras.
+- docs: quickstart, CI badge, improved install/dev instructions.
+
 ## 0.3.0 - 2026-03-17
 
 - Rebuilt Peridot as a richer CLI-first tool for creating, inspecting, applying and managing `.peridot` bundles.
