@@ -140,6 +140,9 @@ CURRENT_LANGUAGE = "es"
 
 TRANSLATIONS = {
     "en": {
+        "Peridot initialized": "Peridot initialized",
+        "Next steps": "Next steps",
+        "Bench results": "Bench results",
         "Portable config bundles for humans": "Portable config bundles for humans",
         "Bundles portables de configuracion para humanos": "Portable config bundles for humans",
         "Error": "Error",
@@ -2239,7 +2242,7 @@ def cmd_bench(args) -> None:
     input_bytes = file_count * size_kb * 1024
 
     # Print a compact summary.
-    console.print("\n[bold]Bench results[/bold]")
+    console.print("\n[bold]" + tr("Bench results") + "[/bold]")
     for row in results:
         mb_s = (input_bytes / 1_000_000) / max(0.0001, float(row["seconds"]))
         ratio = float(row["output_bytes"]) / max(1.0, float(input_bytes))
@@ -2614,9 +2617,9 @@ def cmd_init(args) -> None:
     footer.add_row("Compression", f"{settings.get('compression_level')}/9 ({active_compression_codec()})")
     footer.add_row("Jobs", str(settings.get("jobs")))
 
-    console.print(Panel(footer, title="Peridot initialized", border_style="green"))
+    console.print(Panel(footer, title=tr("Peridot initialized"), border_style="green"))
 
-    console.print("\nNext steps:")
+    console.print("\n" + tr("Next steps") + ":")
     console.print("- peridot pack --help")
     console.print("- peridot ui")
     console.print("- peridot bench --files 200 --size-kb 4 --levels 0,1,3 --runs 1")
