@@ -268,9 +268,16 @@ def _handle_initialize(params: JSON) -> JSON:
     capabilities = {
         "tools": {"listChanged": False},
     }
+
+    # The description helps MCP hosts/agents understand what this server is for.
     server_info = {
         "name": "peridot-mcp",
         "version": "0.1.0",
+        "description": (
+            "Peridot MCP exposes Peridot as AI-callable tools to package, inspect, verify, "
+            "diff and (optionally) apply encrypted + compressed dotfiles/config bundles "
+            "across systems safely."
+        ),
     }
     return {"capabilities": capabilities, "serverInfo": server_info}
 
