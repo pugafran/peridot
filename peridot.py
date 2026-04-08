@@ -745,6 +745,9 @@ def detect_shell() -> str:
         On Windows, COMSPEC often points to cmd.exe even when running inside
         PowerShell/Windows Terminal. We prefer detecting PowerShell via the
         presence of the PSModulePath env var.
+
+        When no shell can be detected, we return "unknown" (instead of an empty
+        string) so downstream code can branch on an explicit sentinel.
     """
 
     # Windows: PowerShell sets PSModulePath.
@@ -752,6 +755,9 @@ def detect_shell() -> str:
         return "powershell"
 
     shell = os.environ.get("SHELL") or os.environ.get("COMSPEC") or ""
+    if not shell.strip():
+        return "unknown"
+
     name = Path(shell).name.lower()
 
     # Normalize common Windows variants.
@@ -760,7 +766,7 @@ def detect_shell() -> str:
     if name in {"cmd", "cmd.exe"}:
         return "cmd"
 
-    return name
+    return name or "unknown"
 
 
 def ensure_parent(path: Path) -> None:

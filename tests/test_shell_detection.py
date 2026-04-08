@@ -21,3 +21,10 @@ def test_detect_shell_unix(monkeypatch):
     monkeypatch.delenv("PSModulePath", raising=False)
     monkeypatch.setenv("SHELL", "/bin/zsh")
     assert peridot.detect_shell() == "zsh"
+
+
+def test_detect_shell_unknown_when_env_missing(monkeypatch):
+    monkeypatch.delenv("SHELL", raising=False)
+    monkeypatch.delenv("COMSPEC", raising=False)
+    monkeypatch.delenv("PSModulePath", raising=False)
+    assert peridot.detect_shell() == "unknown"
