@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2 - 2026-04-08
+
+- Windows: include both PowerShell 7+ (Documents/PowerShell) and Windows PowerShell legacy (Documents/WindowsPowerShell) profile paths (including OneDrive variants).
+
 ## 0.4.1 - 2026-04-08
 
 - Packaging: prepare PyPI publishing (README.md casing + project URLs).
