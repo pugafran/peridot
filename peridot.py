@@ -769,6 +769,7 @@ def detect_shell() -> str:
         return "powershell"
 
     shell = os.environ.get("SHELL") or os.environ.get("COMSPEC") or ""
+<<<<<<< HEAD
     shell = shell.strip().strip('"').strip("'")
     if not shell.strip():
         return "unknown"
@@ -780,6 +781,12 @@ def detect_shell() -> str:
         name = PureWindowsPath(shell).name.lower()
     else:
         name = Path(shell).name.lower()
+=======
+    if not shell.strip():
+        return "unknown"
+
+    name = Path(shell).name.lower()
+>>>>>>> fcd52da (detect_shell: return 'unknown' when env missing)
 
     # Normalize common Windows variants.
     if name in {"pwsh", "pwsh.exe", "powershell", "powershell.exe"}:
