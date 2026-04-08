@@ -1469,6 +1469,13 @@ def inflate_payload(payload: bytes, compression: str | None) -> bytes:
         try:
             return gzip.decompress(payload)
         except OSError:
+            # Older/hand-crafted manifests might omit compression.
+            # We try gzip first, then zstd (if available), then fall back to raw bytes.
+            if zstd is not None:
+                try:
+                    return zstd.ZstdDecompressor().decompress(payload)
+                except Exception:
+                    pass
             return payload
 
     if compression == "gzip":
