@@ -2569,6 +2569,43 @@ def cmd_settings(args) -> None:
     interactive_settings_editor(settings_path)
 
 
+def cmd_init(args) -> None:
+    """Initialize Peridot local state (key + settings) with sane defaults."""
+
+    print_banner()
+
+    key_path: Path = getattr(args, "key", DEFAULT_KEY)
+    settings_path: Path = DEFAULT_SETTINGS_STORE
+
+    # Ensure key exists.
+    key = load_key(key_path, create=True)
+
+    # Ensure settings exist (or overwrite with --force).
+    if settings_path.exists() and not getattr(args, "force", False):
+        settings = load_settings(settings_path)
+        console.print(f"[dim]Settings already exist at {settings_path}[/dim]")
+    else:
+        ensure_parent(settings_path)
+        save_settings({**DEFAULT_SETTINGS}, settings_path)
+        settings = load_settings(settings_path)
+        console.print(f"[green]Created settings at {settings_path}[/green]")
+
+    footer = Table.grid(padding=(0, 2))
+    footer.add_row("Key", str(key_path))
+    footer.add_row("Fingerprint", fingerprint_key(key))
+    footer.add_row("Settings", str(settings_path))
+    footer.add_row("Language", str(settings.get("language")))
+    footer.add_row("Compression", f"{settings.get('compression_level')}/9 ({active_compression_codec()})")
+    footer.add_row("Jobs", str(settings.get("jobs")))
+
+    console.print(Panel(footer, title="Peridot initialized", border_style="green"))
+
+    console.print("\nNext steps:")
+    console.print("- peridot pack --help")
+    console.print("- peridot ui")
+    console.print("- peridot bench --files 200 --size-kb 4 --levels 0,1,3 --runs 1")
+
+
 def cmd_doctor(args) -> None:
     rows = []
     rows.append(("key", "ok" if args.key.exists() else "missing", str(args.key)))
@@ -3188,6 +3225,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     keygen_parser = subparsers.add_parser("keygen", help="Genera o muestra la clave activa")
     keygen_parser.set_defaults(func=cmd_keygen)
+
+    init_parser = subparsers.add_parser("init", help="Inicializa Peridot (key + settings)")
+    init_parser.add_argument("--force", action="store_true", help="Sobrescribe settings existentes")
+    init_parser.set_defaults(func=cmd_init)
 
     ui_parser = subparsers.add_parser("ui", help="Lanza el command center visual")
     ui_parser.set_defaults(func=cmd_ui)
