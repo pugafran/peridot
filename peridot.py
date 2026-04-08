@@ -68,7 +68,7 @@ except ModuleNotFoundError:
 QUESTIONARY_AVAILABLE = questionary is not None and Choice is not None
 
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 PACKAGE_VERSION = 1
 DEFAULT_COMPRESSION_LEVEL = 1
 DEFAULT_JOBS = max(2, min(8, os.cpu_count() or 2))
@@ -140,6 +140,31 @@ CURRENT_LANGUAGE = "es"
 
 TRANSLATIONS = {
     "en": {
+        "Peridot initialized": "Peridot initialized",
+        "Next steps": "Next steps",
+        "Bench results": "Bench results",
+        "Verificacion fallida": "Verification failed",
+        "Verificacion OK": "Verification OK",
+        "Inspeccionar": "Inspect",
+        "Mostrar lista de ficheros?": "Show file list?",
+        "Mostrar manifest JSON?": "Show manifest JSON?",
+        "Aplicar": "Apply",
+        "Hacer dry-run primero?": "Dry run first?",
+        "Directorio destino": "Target directory",
+        "Guardar backups antes de sobrescribir?": "Save backups before overwrite?",
+        "Directorio de backups": "Backup directory",
+        "Ignorar mismatch de plataforma?": "Ignore platform mismatch?",
+        "Verificar": "Verify",
+        "Verificacion profunda (descifrar)?": "Deep verify with decryption?",
+        "Compartir": "Share",
+        "Formato": "Format",
+        "Fichero de salida (vacio = imprimir)": "Output file (leave empty to print)",
+        "Nombre del bundle": "Bundle name",
+        "Accion de perfil": "Profile action",
+        "Nombre del perfil": "Profile name",
+        "Rekey todos los bundles locales?": "Rekey all local bundles?",
+        "Borrar todos los bundles locales?": "Delete all local bundles?",
+        "Borrar": "Delete",
         "Portable config bundles for humans": "Portable config bundles for humans",
         "Bundles portables de configuracion para humanos": "Portable config bundles for humans",
         "Error": "Error",
@@ -161,6 +186,11 @@ TRANSLATIONS = {
         "falta la dependencia 'questionary' en este Python.": "the 'questionary' dependency is missing in this Python.",
         "Usa el binario instalado con './install.sh' o ejecuta 'python3 -m pip install -r requirements.txt'.": "Use the binary installed with './install.sh' or run 'python3 -m pip install -r requirements.txt'.",
         "Select groups": "Select groups",
+        "Selecciona rutas": "Select paths",
+        "Selecciona rutas para este bundle": "Select paths for this bundle",
+        "Selecciona grupos de configuracion": "Select config groups",
+        "Espacio para marcar, Enter para confirmar": "Space to toggle, Enter to confirm",
+        "Como quieres construir este bundle?": "How do you want to build this bundle?",
         "Bundle source: preset, catalog or empty": "Bundle source: preset, catalog or empty",
         "Base selection": "Base selection",
         "Preset": "Preset",
@@ -423,17 +453,49 @@ def sanitize_compression_level(value: object) -> int:
     return max(0, min(9, level))
 
 
+def max_reasonable_jobs(cpu_count: int | None = None) -> int:
+    """Return a safe upper bound for parallel jobs.
+
+    We keep it tied to available CPU to avoid spawning an excessive amount of
+    processes/threads on small machines, while still allowing high-core hosts
+    to take advantage of their capacity.
+    """
+
+    cpu = cpu_count if cpu_count is not None else (os.cpu_count() or 2)
+    try:
+        cpu_int = int(cpu)
+    except (TypeError, ValueError):
+        cpu_int = 2
+    cpu_int = max(1, cpu_int)
+    return max(1, min(64, cpu_int * 2))
+
+
 def sanitize_jobs(value: object) -> int:
     try:
         jobs = int(value)
     except (TypeError, ValueError):
         jobs = DEFAULT_JOBS
-    return max(1, min(32, jobs))
+    return max(1, min(max_reasonable_jobs(), jobs))
 
 
 def sanitize_language(value: object) -> str:
-    language = str(value or DEFAULT_SETTINGS["language"]).strip().lower()
-    return language if language in {"es", "en"} else DEFAULT_SETTINGS["language"]
+    """Normalize language values.
+
+    Accepts exact codes ("es", "en") and common locale variants such as
+    "es-ES", "en_US" or "EN-us" by reducing them to the base language.
+    """
+
+    raw = str(value or DEFAULT_SETTINGS["language"]).strip().lower()
+    # Strip common locale suffixes such as ".UTF-8" or "@euro".
+    raw = raw.split(".", 1)[0].split("@", 1)[0].replace("_", "-")
+    if raw in {"es", "en"}:
+        return raw
+
+    base = raw.split("-", 1)[0] if raw else ""
+    if base in {"es", "en"}:
+        return base
+
+    return DEFAULT_SETTINGS["language"]
 
 
 def slugify(value: str) -> str:
@@ -708,20 +770,50 @@ def fingerprint_key(key: bytes) -> str:
     return hashlib.sha256(key).hexdigest()[:16]
 
 
+def decode_aesgcm_key_bytes(raw: bytes | str) -> bytes | None:
+    """Decode a 32-byte AES-GCM key from raw bytes, text, or base64url.
+
+    Accepts:
+    - Raw 32 bytes
+    - base64url-encoded bytes (with or without padding, with optional whitespace/newlines)
+    - A string containing either of the above (UTF-8)
+    """
+
+    if isinstance(raw, str):
+        raw_bytes = raw.encode("utf-8")
+    else:
+        raw_bytes = raw
+
+    if len(raw_bytes) == 32:
+        return raw_bytes
+
+    cleaned = b"".join(raw_bytes.split())
+    if not cleaned:
+        return None
+
+    # base64 decoders expect padding; allow unpadded base64url keys.
+    missing_padding = (-len(cleaned)) % 4
+    if missing_padding:
+        cleaned += b"=" * missing_padding
+
+    try:
+        decoded = base64.urlsafe_b64decode(cleaned)
+    except Exception:
+        return None
+
+    return decoded if len(decoded) == 32 else None
+
+
 def load_key(key_path: Path, create: bool = False) -> bytes:
     if key_path.exists():
         key = key_path.read_bytes()
-        if len(key) == 32:
-            return key
-        try:
-            decoded = base64.urlsafe_b64decode(key)
-        except Exception:
-            decoded = b""
-        if len(decoded) == 32:
-            try:
-                write_key(key_path, decoded)
-            except OSError:
-                pass
+        decoded = decode_aesgcm_key_bytes(key)
+        if decoded is not None:
+            if decoded != key:
+                try:
+                    write_key(key_path, decoded)
+                except OSError:
+                    pass
             return decoded
         die(f"Clave invalida en {key_path}: se esperaban 32 bytes para AES-GCM.")
     if not create:
@@ -1037,9 +1129,9 @@ def checkbox_prompt(message: str, choices: list, instruction: str | None = None)
     if not QUESTIONARY_AVAILABLE or not sys.stdin.isatty():
         return None
     return questionary.checkbox(
-        message,
+        tr(message),
         choices=choices,
-        instruction=instruction or "Space to toggle, Enter to confirm",
+        instruction=tr(instruction or "Espacio para marcar, Enter para confirmar"),
     ).ask()
 
 
@@ -1080,7 +1172,7 @@ def interactive_checkbox_paths(paths: list[Path], preselected: list[Path] | None
             suffix = "dir" if path.is_dir() else "file"
             label = f"{label}  [{suffix}]"
         choices.append(Choice(title=label, value=path, checked=path in preselected_set))
-    return checkbox_prompt("Select paths", choices)
+    return checkbox_prompt("Selecciona rutas", choices)
 
 
 def build_path_catalog(os_name: str) -> list[tuple[Path, str]]:
@@ -1109,7 +1201,7 @@ def interactive_checkbox_catalog_paths(
         kind = "dir" if path.is_dir() else "file"
         title = f"{path}  [{kind}]  {source_label}"
         choices.append(Choice(title=title, value=path, checked=path in preselected_set))
-    return checkbox_prompt("Select paths for this bundle", choices)
+    return checkbox_prompt("Selecciona rutas para este bundle", choices)
 
 
 def recommended_group_keys(groups: list[ConfigGroup], shell_name: str) -> set[str]:
@@ -1136,7 +1228,7 @@ def interactive_select_config_groups(os_name: str, shell_name: str) -> list[Path
             found = len(existing_paths(group.paths))
             title = f"[{group.category}] {group.label} ({found} found) - {group.description}"
             choices.append(Choice(title=title, value=group.key, checked=group.key in selected_keys))
-        result = checkbox_prompt("Select config groups", choices)
+        result = checkbox_prompt("Selecciona grupos de configuracion", choices)
         if result is not None:
             selected_keys = set(result)
 
@@ -1190,7 +1282,7 @@ def choose_pack_base(os_name: str, preset_name: str | None) -> str:
     ]
     if QUESTIONARY_AVAILABLE and sys.stdin.isatty():
         answer = questionary.select(
-            "How do you want to build this bundle?",
+            tr("Como quieres construir este bundle?"),
             choices=[Choice(title=title, value=value) for title, value in options],
             default="preset" if preset_name else "catalog",
         ).ask()
@@ -1295,9 +1387,43 @@ def compress_payload(raw: bytes, compression_level: int) -> bytes:
     return gzip.compress(raw, compresslevel=compression_level, mtime=0)
 
 
-def choose_compression(raw: bytes, relative_path: str, compression_level: int) -> tuple[str, bytes]:
+def shannon_entropy(sample: bytes) -> float:
+    """Return Shannon entropy (bits/byte) for a sample."""
+
+    if not sample:
+        return 0.0
+
+    counts = [0] * 256
+    for b in sample:
+        counts[b] += 1
+
+    import math
+
+    length = len(sample)
+    entropy = 0.0
+    for c in counts:
+        if not c:
+            continue
+        p = c / length
+        entropy -= p * math.log2(p)
+    return entropy
+
+
+def likely_incompressible(raw: bytes, relative_path: str) -> bool:
     suffix = Path(relative_path).suffix.lower()
-    if compression_level <= 0 or suffix in INCOMPRESSIBLE_SUFFIXES:
+    if suffix in INCOMPRESSIBLE_SUFFIXES:
+        return True
+    # Sample up to 32 KiB to estimate entropy; high entropy tends to compress poorly.
+    sample = raw[: 32 * 1024]
+    if len(sample) < 1024:
+        return False
+    return shannon_entropy(sample) > 7.6
+
+
+def choose_compression(raw: bytes, relative_path: str, compression_level: int) -> tuple[str, bytes]:
+    if compression_level <= 0:
+        return "none", raw
+    if likely_incompressible(raw, relative_path):
         return "none", raw
     compressed = compress_payload(raw, compression_level)
     if len(compressed) >= int(len(raw) * 0.98):
@@ -1343,14 +1469,37 @@ def detect_sensitive_entries(entries: list[FileEntry]) -> list[FileEntry]:
 
 
 def inflate_payload(payload: bytes, compression: str | None) -> bytes:
-    if compression in {None, "", "gzip"}:
+    """Inflate a payload according to the manifest's compression metadata.
+
+    Notes:
+        Older/hand-crafted manifests might omit the compression field.
+        In that case we try gzip first and fall back to raw bytes.
+    """
+
+    if compression in {None, ""}:
+        try:
+            return gzip.decompress(payload)
+        except OSError:
+            # Older/hand-crafted manifests might omit compression.
+            # We try gzip first, then zstd (if available), then fall back to raw bytes.
+            if zstd is not None:
+                try:
+                    return zstd.ZstdDecompressor().decompress(payload)
+                except Exception:
+                    pass
+            return payload
+
+    if compression == "gzip":
         return gzip.decompress(payload)
+
     if compression == "zstd":
         if zstd is None:
             die("Este paquete usa zstd pero falta la dependencia 'zstandard' en este Python.")
         return zstd.ZstdDecompressor().decompress(payload)
+
     if compression == "none":
         return payload
+
     die(f"Metodo de compresion no soportado: {compression}")
 
 
@@ -1677,8 +1826,11 @@ def prepare_pack_inputs(args) -> tuple[list[Path], Path]:
         if missing_core or not args.paths:
             return interactive_pack_setup(args)
 
+    # Non-interactive defaults: avoid hard-failing when running from scripts/CI.
     if not args.name:
-        die("Falta el nombre del bundle. Ejecuta 'peridot pack' en terminal interactiva o pasa el nombre.")
+        args.name = f"{platform.node() or 'my'}-{normalize_os_name(args.platform)}-bundle"
+    if args.description is None:
+        args.description = ""
 
     paths = [Path(item).expanduser() for item in args.paths] if args.paths else default_export_roots()
     output = args.output or Path(f"{slugify(args.name)}.peridot")
@@ -1958,10 +2110,12 @@ def cmd_pack(args) -> None:
             f"[yellow]{tr('Adaptive pack:')}[/yellow] {trf('reduciendo ventana inicial de {requested} a {initial} ({reason}). Puede volver a subir si la memoria acompana.', requested=requested_jobs, initial=initial_jobs, reason=preflight_reason)}"
         )
 
-    with TemporaryDirectory() as tmp_dir_name:
-        payload_root = Path(tmp_dir_name) / "payloads"
-        payload_root.mkdir(parents=True, exist_ok=True)
+    ensure_parent(output)
+    tmp_output = output.with_suffix(output.suffix + ".tmp")
 
+    # Write payloads directly into the ZIP as they are produced.
+    # This avoids writing encrypted payloads to disk first (big speed win on slow I/O).
+    with ZipFile(tmp_output, "w", compression=ZIP_STORED) as bundle:
         with Progress(
             SpinnerColumn(style="green"),
             TextColumn("[progress.description]{task.description}"),
@@ -1983,7 +2137,9 @@ def cmd_pack(args) -> None:
 
             executor, executor_mode = create_pack_executor(requested_jobs)
             if executor_mode == "threads-fallback":
-                console.print(f"[yellow]{tr('Adaptive pack:')}[/yellow] {tr('Process pool no disponible en este sistema; usando threads.')}")
+                console.print(
+                    f"[yellow]{tr('Adaptive pack:')}[/yellow] {tr('Process pool no disponible en este sistema; usando threads.')}"  # noqa: E501
+                )
             with executor:
                 pending: dict = {}
                 next_index = 1
@@ -2013,7 +2169,10 @@ def cmd_pack(args) -> None:
                     for future in done:
                         entry, payload_name = pending.pop(future)
                         encrypted, record = future.result()
-                        (payload_root / payload_name).write_bytes(encrypted)
+
+                        # Write payload directly into the bundle.
+                        bundle.writestr(record["payload"], encrypted)
+
                         files_manifest.append(record)
                         completed_files += 1
                         progress.update(
@@ -2027,9 +2186,19 @@ def cmd_pack(args) -> None:
                     inflight_limit, pressure_label = adaptive_next_inflight_limit(inflight_limit, requested_jobs)
                     if inflight_limit != previous_limit:
                         if inflight_limit > previous_limit:
-                            detail = trf("subiendo ventana activa {previous} -> {current} ({label}).", previous=previous_limit, current=inflight_limit, label=pressure_label)
+                            detail = trf(
+                                "subiendo ventana activa {previous} -> {current} ({label}).",
+                                previous=previous_limit,
+                                current=inflight_limit,
+                                label=pressure_label,
+                            )
                         else:
-                            detail = trf("bajando ventana activa {previous} -> {current} ({label}).", previous=previous_limit, current=inflight_limit, label=pressure_label)
+                            detail = trf(
+                                "bajando ventana activa {previous} -> {current} ({label}).",
+                                previous=previous_limit,
+                                current=inflight_limit,
+                                label=pressure_label,
+                            )
                         console.print(f"[dim]{tr('Adaptive pack:')}[/dim] {detail}")
                     while next_index <= len(entries) and len(pending) < inflight_limit:
                         submit_one(next_index, entries[next_index - 1])
@@ -2037,16 +2206,131 @@ def cmd_pack(args) -> None:
 
         files_manifest.sort(key=lambda item: item["path"])
         manifest = build_manifest(args, files_manifest, [str(path) for path in paths])
-        ensure_parent(output)
-        with ZipFile(output, "w", compression=ZIP_STORED) as bundle:
-            bundle.writestr("manifest.json", json.dumps(manifest, indent=2, sort_keys=True) + "\n", compress_type=ZIP_DEFLATED)
-            for file_entry in files_manifest:
-                bundle.write(payload_root / Path(file_entry["payload"]).name, file_entry["payload"])
+        bundle.writestr(
+            "manifest.json",
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+            compress_type=ZIP_DEFLATED,
+        )
+
+    # Atomic-ish replace.
+    tmp_output.replace(output)
 
     render_bundle_card(manifest, output)
     if history_snapshot:
             console.print(f"[dim]{trf('Previous snapshot saved to {path}', path=history_snapshot)}[/dim]")
     console.print(f"[bold green]{trf('Created {output}', output=output)}[/bold green]")
+
+
+def cmd_bench(args) -> None:
+    """Micro-benchmark Peridot pack performance.
+
+    This creates a synthetic dataset of N files and runs `pack` multiple times
+    with different compression levels/jobs, reporting wall time and output size.
+    """
+
+    print_banner()
+
+    runs = max(1, int(args.runs))
+    file_count = max(1, int(args.files))
+    size_kb = max(1, int(args.size_kb))
+
+    # Parse compression levels like: "0,1,3,6".
+    levels: list[int] = []
+    for raw in str(args.levels).split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        levels.append(sanitize_compression_level(int(raw)))
+    if not levels:
+        levels = [DEFAULT_COMPRESSION_LEVEL]
+
+    key = load_key(args.key, create=True)
+
+    results: list[dict] = []
+
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        data_dir = root / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        # Deterministic-ish payload to make runs comparable.
+        block = (b"peridot" * 128)  # 768 bytes
+        target_size = size_kb * 1024
+
+        for i in range(file_count):
+            content = (block * ((target_size // len(block)) + 1))[:target_size]
+            (data_dir / f"file-{i:04d}.txt").write_bytes(content)
+
+        # One run per config.
+        for level in levels:
+            for jobs in [int(args.jobs)]:
+                for run_idx in range(runs):
+                    out = root / f"bench-l{level}-j{jobs}-r{run_idx}.peridot"
+                    t0 = datetime.now(timezone.utc)
+                    start = datetime.now(timezone.utc).timestamp()
+
+                    pack_args = SimpleNamespace(
+                        key=args.key,
+                        name=f"bench-l{level}-j{jobs}",
+                        paths=[str(data_dir)],
+                        output=out,
+                        description="",
+                        platform=normalize_os_name("linux"),
+                        shell="bash",
+                        arch=platform.machine().lower(),
+                        tags=[],
+                        preset="",
+                        profile="",
+                        exclude=[],
+                        notes="",
+                        after_steps=[],
+                        compression_level=level,
+                        jobs=jobs,
+                        yes=True,
+                        language=getattr(args, "language", None),
+                    )
+
+                    cmd_pack(pack_args)
+
+                    end = datetime.now(timezone.utc).timestamp()
+                    dt = end - start
+                    results.append(
+                        {
+                            "level": level,
+                            "jobs": jobs,
+                            "run": run_idx,
+                            "seconds": round(dt, 4),
+                            "output_bytes": out.stat().st_size,
+                            "started_at": t0.isoformat(),
+                        }
+                    )
+
+    input_bytes = file_count * size_kb * 1024
+
+    # Print a compact summary.
+    console.print("\n[bold]" + tr("Bench results") + "[/bold]")
+    for row in results:
+        mb_s = (input_bytes / 1_000_000) / max(0.0001, float(row["seconds"]))
+        ratio = float(row["output_bytes"]) / max(1.0, float(input_bytes))
+        console.print(
+            f"- level={row['level']} jobs={row['jobs']} run={row['run']} -> {row['seconds']}s | in={format_bytes(int(input_bytes))} | out={format_bytes(int(row['output_bytes']))} | {mb_s:.1f} MB/s | ratio={ratio:.2f}"
+        )
+
+    if args.json or getattr(args, "out", None):
+        payload = {
+            "input_bytes": input_bytes,
+            "files": file_count,
+            "size_kb": size_kb,
+            "results": results,
+        }
+        rendered = json.dumps(payload, indent=2)
+        if getattr(args, "out", None):
+            out_path = Path(args.out).expanduser()
+            ensure_parent(out_path)
+            out_path.write_text(rendered + "\n", encoding="utf-8")
+            console.print(f"[dim]Saved bench JSON to {out_path}[/dim]")
+        if args.json:
+            print(rendered)
 
 
 def cmd_inspect(args) -> None:
@@ -2064,11 +2348,19 @@ def cmd_inspect(args) -> None:
         print_manifest_json(manifest)
 
 
-def backup_existing_file(source: Path, backup_dir: Path, home_target: Path) -> None:
+def backup_existing_file(source: Path, backup_dir: Path, home_target: Path) -> Path:
     relative = source.relative_to(home_target)
     backup_path = backup_dir / relative
     ensure_parent(backup_path)
     shutil.copy2(source, backup_path)
+    return backup_path
+
+
+@dataclass
+class ApplyChange:
+    target_path: Path
+    existed: bool
+    backup_path: Path | None
 
 
 def cmd_apply(args) -> None:
@@ -2113,40 +2405,114 @@ def cmd_apply(args) -> None:
     target_root = args.target.expanduser()
     backup_dir = args.backup_dir.expanduser() if args.backup_dir else None
 
+    transactional = getattr(args, "transactional", True)
+    verify_write = getattr(args, "verify", True)
+
     overwritten = 0
     restored = 0
+    changes: list[ApplyChange] = []
+
+    def rollback(reason: str) -> None:
+        if not changes:
+            return
+        console.print(f"[yellow]{'Aviso' if CURRENT_LANGUAGE == 'es' else 'Warning'}:[/yellow] rollback: {reason}")
+        # Reverse order: last write first.
+        for change in reversed(changes):
+            try:
+                if change.existed and change.backup_path and change.backup_path.exists():
+                    ensure_parent(change.target_path)
+                    shutil.copy2(change.backup_path, change.target_path)
+                elif not change.existed:
+                    if change.target_path.exists():
+                        change.target_path.unlink()
+            except Exception:
+                # Best effort rollback.
+                pass
+
     total_bytes = sum(entry["size"] for entry in filtered_manifest["files"])
-    with ZipFile(args.package) as bundle:
-        with Progress(
-            SpinnerColumn(style="green"),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(bar_width=30),
-            TextColumn("{task.fields[file_count]}/{task.fields[file_total]} files"),
-            TextColumn("{task.percentage:>3.0f}%"),
-            TimeElapsedColumn(),
-            TimeRemainingColumn(),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Applying", total=total_bytes or len(filtered_manifest["files"]), file_count=0, file_total=len(filtered_manifest["files"]))
-            for file_entry in filtered_manifest["files"]:
-                target_path = target_root / file_entry["path"]
-                ensure_parent(target_path)
-                if target_path.exists() and backup_dir:
-                    backup_existing_file(target_path, backup_dir, target_root)
-                    overwritten += 1
-                try:
-                    encrypted = bundle.read(file_entry["payload"])
-                    payload = decrypt_payload(encrypted, file_entry, key)
-                    raw = inflate_payload(payload, file_entry.get("compression"))
-                except ValueError:
-                    die(tr("La clave no coincide con el paquete."))
-                target_path.write_bytes(raw)
-                try:
-                    target_path.chmod(file_entry["mode"])
-                except OSError:
-                    pass
-                restored += 1
-                progress.update(task, advance=file_entry["size"], file_count=restored)
+
+    # If transactional and user didn't request backups, use a temporary backup dir.
+    temp_backup_ctx = TemporaryDirectory() if transactional and not backup_dir else None
+    try:
+        if temp_backup_ctx is not None:
+            backup_dir = Path(temp_backup_ctx.name)
+
+        if backup_dir:
+            backup_dir.mkdir(parents=True, exist_ok=True)
+
+        with ZipFile(args.package) as bundle:
+            with Progress(
+                SpinnerColumn(style="green"),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(bar_width=30),
+                TextColumn("{task.fields[file_count]}/{task.fields[file_total]} files"),
+                TextColumn("{task.percentage:>3.0f}%"),
+                TimeElapsedColumn(),
+                TimeRemainingColumn(),
+                console=console,
+            ) as progress:
+                task = progress.add_task(
+                    "Applying",
+                    total=total_bytes or len(filtered_manifest["files"]),
+                    file_count=0,
+                    file_total=len(filtered_manifest["files"]),
+                )
+                for file_entry in filtered_manifest["files"]:
+                    target_path = target_root / file_entry["path"]
+                    ensure_parent(target_path)
+
+                    existed = target_path.exists()
+                    backup_path = None
+                    if existed and backup_dir:
+                        backup_path = backup_existing_file(target_path, backup_dir, target_root)
+                        overwritten += 1
+
+                    # Track this change so we can rollback on failure.
+                    changes.append(ApplyChange(target_path=target_path, existed=existed, backup_path=backup_path))
+
+                    try:
+                        encrypted = bundle.read(file_entry["payload"])
+                        payload = decrypt_payload(encrypted, file_entry, key)
+                        raw = inflate_payload(payload, file_entry.get("compression"))
+                    except ValueError:
+                        if transactional:
+                            rollback(tr("La clave no coincide con el paquete."))
+                        die(tr("La clave no coincide con el paquete."))
+
+                    try:
+                        target_path.write_bytes(raw)
+                    except Exception as exc:
+                        if transactional:
+                            rollback(f"write failed: {exc}")
+                        raise
+
+                    if verify_write:
+                        try:
+                            written = target_path.read_bytes()
+                        except Exception as exc:
+                            if transactional:
+                                rollback(f"verify read failed: {exc}")
+                            raise
+                        if hashlib.sha256(written).hexdigest() != file_entry["sha256"]:
+                            msg = f"Hash mismatch after write: {file_entry['path']}"
+                            if transactional:
+                                rollback(msg)
+                            die(msg)
+
+                    try:
+                        target_path.chmod(file_entry["mode"])
+                    except OSError:
+                        pass
+                    restored += 1
+                    progress.update(task, advance=file_entry["size"], file_count=restored)
+
+    except Exception as exc:
+        if transactional:
+            rollback(f"exception: {exc}")
+        raise
+    finally:
+        if temp_backup_ctx is not None:
+            temp_backup_ctx.cleanup()
 
     footer = Table.grid(padding=(0, 2))
     footer.add_row("Target", str(target_root))
@@ -2206,11 +2572,11 @@ def cmd_verify(args) -> None:
             raise SystemExit(1)
         return
     if issues:
-        console.print("[bold red]Verify failed[/bold red]")
+        console.print(f"[bold red]{tr('Verificacion fallida')}[/bold red]")
         for issue in issues:
             console.print(f"- {issue}")
         raise SystemExit(1)
-    console.print("[bold green]Verify ok[/bold green]")
+    console.print(f"[bold green]{tr('Verificacion OK')}[/bold green]")
 
 
 def render_settings_table(settings: dict) -> None:
@@ -2286,6 +2652,43 @@ def cmd_settings(args) -> None:
         return
 
     interactive_settings_editor(settings_path)
+
+
+def cmd_init(args) -> None:
+    """Initialize Peridot local state (key + settings) with sane defaults."""
+
+    print_banner()
+
+    key_path: Path = getattr(args, "key", DEFAULT_KEY)
+    settings_path: Path = DEFAULT_SETTINGS_STORE
+
+    # Ensure key exists.
+    key = load_key(key_path, create=True)
+
+    # Ensure settings exist (or overwrite with --force).
+    if settings_path.exists() and not getattr(args, "force", False):
+        settings = load_settings(settings_path)
+        console.print(f"[dim]Settings already exist at {settings_path}[/dim]")
+    else:
+        ensure_parent(settings_path)
+        save_settings({**DEFAULT_SETTINGS}, settings_path)
+        settings = load_settings(settings_path)
+        console.print(f"[green]Created settings at {settings_path}[/green]")
+
+    footer = Table.grid(padding=(0, 2))
+    footer.add_row("Key", str(key_path))
+    footer.add_row("Fingerprint", fingerprint_key(key))
+    footer.add_row("Settings", str(settings_path))
+    footer.add_row("Language", str(settings.get("language")))
+    footer.add_row("Compression", f"{settings.get('compression_level')}/9 ({active_compression_codec()})")
+    footer.add_row("Jobs", str(settings.get("jobs")))
+
+    console.print(Panel(footer, title=tr("Peridot initialized"), border_style="green"))
+
+    console.print("\n" + tr("Next steps") + ":")
+    console.print("- peridot pack --help")
+    console.print("- peridot ui")
+    console.print("- peridot bench --files 200 --size-kb 4 --levels 0,1,3 --runs 1")
 
 
 def cmd_doctor(args) -> None:
@@ -2649,24 +3052,24 @@ def cmd_ui(args) -> None:
                     )
                 )
             elif action == "inspect":
-                package = choose_bundle_path("Inspect")
-                show_files = Confirm.ask("Show file list?", default=True)
-                show_json = Confirm.ask("Show manifest JSON?", default=False)
+                package = choose_bundle_path(tr("Inspeccionar"))
+                show_files = Confirm.ask(tr("Mostrar lista de ficheros?"), default=True)
+                show_json = Confirm.ask(tr("Mostrar manifest JSON?"), default=False)
                 cmd_inspect(SimpleNamespace(package=package, files=show_files, all=True, json=show_json))
             elif action == "apply":
-                package = choose_bundle_path("Apply")
-                dry_run = Confirm.ask("Dry run first?", default=True)
-                target = Path(Prompt.ask("Target directory", default=str(Path.home()))).expanduser()
-                backup_enabled = Confirm.ask("Save backups before overwrite?", default=True)
+                package = choose_bundle_path(tr("Aplicar"))
+                dry_run = Confirm.ask(tr("Hacer dry-run primero?"), default=True)
+                target = Path(Prompt.ask(tr("Directorio destino"), default=str(Path.home()))).expanduser()
+                backup_enabled = Confirm.ask(tr("Guardar backups antes de sobrescribir?"), default=True)
                 backup_dir = None
                 if backup_enabled:
                     backup_dir = Path(
                         Prompt.ask(
-                            "Backup directory",
+                            tr("Directorio de backups"),
                             default=str(Path.home() / ".peridot-backups"),
                         )
                     ).expanduser()
-                ignore_platform = Confirm.ask("Ignore platform mismatch?", default=False)
+                ignore_platform = Confirm.ask(tr("Ignorar mismatch de plataforma?"), default=False)
                 cmd_apply(
                     SimpleNamespace(
                         package=package,
@@ -2679,36 +3082,36 @@ def cmd_ui(args) -> None:
                     )
                 )
             elif action == "diff":
-                package = choose_bundle_path("Diff")
-                target = Path(Prompt.ask("Target directory", default=str(Path.home()))).expanduser()
+                package = choose_bundle_path(tr("Diff"))
+                target = Path(Prompt.ask(tr("Directorio destino"), default=str(Path.home()))).expanduser()
                 cmd_diff(SimpleNamespace(package=package, target=target, no_hash=False, json=False, key=args.key))
             elif action == "verify":
-                package = choose_bundle_path("Verify")
-                deep = Confirm.ask("Deep verify with decryption?", default=True)
+                package = choose_bundle_path(tr("Verificar"))
+                deep = Confirm.ask(tr("Verificacion profunda (descifrar)?"), default=True)
                 cmd_verify(SimpleNamespace(package=package, deep=deep, json=False, key=args.key))
             elif action == "doctor":
                 cmd_doctor(SimpleNamespace(key=args.key, json=False))
             elif action == "share":
-                package = choose_bundle_path("Share")
-                fmt = Prompt.ask("Format", choices=["md", "json"], default="md")
-                output_raw = Prompt.ask("Output file (leave empty to print)", default="")
+                package = choose_bundle_path(tr("Compartir"))
+                fmt = Prompt.ask(tr("Formato"), choices=["md", "json"], default="md")
+                output_raw = Prompt.ask(tr("Fichero de salida (vacio = imprimir)"), default="")
                 output = Path(output_raw).expanduser() if output_raw else None
                 cmd_share(SimpleNamespace(package=package, format=fmt, output=output))
             elif action == "manifest":
                 package = choose_bundle_path("Manifest")
                 cmd_manifest(SimpleNamespace(package=package))
             elif action == "history":
-                bundle_name = Prompt.ask("Bundle name", default=(discover_local_bundles()[0].stem if discover_local_bundles() else "bundle"))
+                bundle_name = Prompt.ask(tr("Nombre del bundle"), default=(discover_local_bundles()[0].stem if discover_local_bundles() else "bundle"))
                 cmd_history(SimpleNamespace(bundle=bundle_name))
             elif action == "profile":
-                profile_action = Prompt.ask("Profile action", choices=["list", "show", "delete"], default="list")
+                profile_action = Prompt.ask(tr("Accion de perfil"), choices=["list", "show", "delete"], default="list")
                 if profile_action == "list":
                     cmd_profile_list(SimpleNamespace())
                 elif profile_action == "show":
-                    name = Prompt.ask("Profile name")
+                    name = Prompt.ask(tr("Nombre del perfil"))
                     cmd_profile_show(SimpleNamespace(name=name))
                 else:
-                    name = Prompt.ask("Profile name")
+                    name = Prompt.ask(tr("Nombre del perfil"))
                     cmd_profile_delete(SimpleNamespace(name=name))
             elif action == "settings":
                 cmd_settings(SimpleNamespace(settings_path=DEFAULT_SETTINGS_STORE, show=False, set=[]))
@@ -2716,12 +3119,12 @@ def cmd_ui(args) -> None:
             elif action == "keygen":
                 cmd_keygen(SimpleNamespace(key=args.key))
             elif action == "rekey":
-                all_local = Confirm.ask("Rekey all local bundles?", default=True)
-                packages = [] if all_local else [str(path) for path in choose_bundle_paths("Rekey")]
+                all_local = Confirm.ask(tr("Rekey todos los bundles locales?"), default=True)
+                packages = [] if all_local else [str(path) for path in choose_bundle_paths(tr("Rekey"))]
                 cmd_rekey(SimpleNamespace(key=args.key, packages=packages, all_local=all_local, no_backup=False, yes=True))
             elif action == "delete":
-                all_local = Confirm.ask("Delete all local bundles?", default=False)
-                packages = [] if all_local else [str(path) for path in choose_bundle_paths("Delete")]
+                all_local = Confirm.ask(tr("Borrar todos los bundles locales?"), default=False)
+                packages = [] if all_local else [str(path) for path in choose_bundle_paths(tr("Borrar"))]
                 cmd_delete(SimpleNamespace(packages=packages, all_local=all_local, yes=True))
         except SystemExit:
             pass
@@ -2741,6 +3144,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_KEY,
         help=trf("Ruta de la clave AES-GCM (por defecto: {path})", path=DEFAULT_KEY),
+    )
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="version",
+        version=f"%(prog)s {APP_VERSION}",
+        help=tr("Muestra la version y sale"),
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -2764,6 +3174,16 @@ def build_parser() -> argparse.ArgumentParser:
     pack_parser.add_argument("-y", "--yes", action="store_true", help="Aceptar avisos sensibles sin confirmacion")
     pack_parser.set_defaults(func=cmd_pack)
 
+    bench_parser = subparsers.add_parser("bench", help="Benchmark rapido de pack (tiempo + tamano)")
+    bench_parser.add_argument("--files", type=int, default=200, help="Numero de ficheros sinteticos")
+    bench_parser.add_argument("--size-kb", type=int, default=4, help="Tamano por fichero (KB)")
+    bench_parser.add_argument("--runs", type=int, default=1, help="Repeticiones por configuracion")
+    bench_parser.add_argument("--levels", default="0,1,3", help="Niveles de compresion separados por coma")
+    bench_parser.add_argument("--jobs", type=int, default=DEFAULT_JOBS, help="Workers para pack")
+    bench_parser.add_argument("--json", action="store_true", help="Imprime tambien JSON con resultados")
+    bench_parser.add_argument("--out", type=Path, help="Guarda el JSON en un fichero")
+    bench_parser.set_defaults(func=cmd_bench)
+
     inspect_parser = subparsers.add_parser("inspect", help="Muestra la ficha de un paquete")
     inspect_parser.add_argument("package", type=Path, help="Ruta del paquete .peridot")
     inspect_parser.add_argument("--files", action="store_true", help="Muestra la lista de ficheros")
@@ -2775,6 +3195,10 @@ def build_parser() -> argparse.ArgumentParser:
     apply_parser.add_argument("package", type=Path, help="Ruta del paquete .peridot")
     apply_parser.add_argument("--target", type=Path, default=Path.home(), help="Directorio destino para la restauracion")
     apply_parser.add_argument("--backup-dir", type=Path, help="Si existe el fichero, guarda una copia antes de sobrescribir")
+    apply_parser.add_argument("--transactional", dest="transactional", action="store_true", default=True, help="Rollback best-effort si falla a mitad (por defecto activado)")
+    apply_parser.add_argument("--no-transactional", dest="transactional", action="store_false", help="Desactiva rollback transaccional")
+    apply_parser.add_argument("--verify", dest="verify", action="store_true", default=True, help="Verifica hash tras escribir (por defecto activado)")
+    apply_parser.add_argument("--no-verify", dest="verify", action="store_false", help="Desactiva verificacion post-escritura")
     apply_parser.add_argument("--dry-run", action="store_true", help="Muestra lo que se haria sin escribir")
     apply_parser.add_argument("--ignore-platform", action="store_true", help="Aplica incluso si el target del bundle no coincide con la maquina actual")
     apply_parser.add_argument("--select", action="append", default=[], help="Path exacto dentro del bundle a restaurar. Repetible.")
@@ -2886,6 +3310,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     keygen_parser = subparsers.add_parser("keygen", help="Genera o muestra la clave activa")
     keygen_parser.set_defaults(func=cmd_keygen)
+
+    init_parser = subparsers.add_parser("init", help="Inicializa Peridot (key + settings)")
+    init_parser.add_argument("--force", action="store_true", help="Sobrescribe settings existentes")
+    init_parser.set_defaults(func=cmd_init)
 
     ui_parser = subparsers.add_parser("ui", help="Lanza el command center visual")
     ui_parser.set_defaults(func=cmd_ui)

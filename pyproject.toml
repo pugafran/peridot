@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "peridot-cli"
-version = "0.3.0"
+version = "0.4.0"
 description = "Visual CLI for portable configuration bundles"
 readme = "readme.md"
 requires-python = ">=3.11"
@@ -33,6 +33,11 @@ classifiers = [
 
 [project.scripts]
 peridot = "peridot:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+]
 
 [tool.setuptools]
 py-modules = ["peridot"]

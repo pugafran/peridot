@@ -2,7 +2,9 @@
 
 # Peridot
 
-Current release: `0.3.0`. See `CHANGELOG.md` for release notes.
+![CI](https://github.com/pugafran/peridot/actions/workflows/ci.yml/badge.svg)
+
+Current release: `0.4.0`. See `CHANGELOG.md` for release notes.
 
 Peridot es una herramienta de terminal para empaquetar configuraciones en bundles `.peridot`, inspeccionarlos antes de aplicar nada y restaurarlos en otra maquina con una UX visual cuidada.
 
@@ -43,6 +45,16 @@ Los payloads contienen el contenido real de cada fichero, comprimido con `zstd` 
 
 ## Instalacion
 
+Recomendado (modo dev, con tests):
+
+```bash
+./install.sh
+# opcional: instala dependencias de desarrollo (pytest, etc.)
+PERIDOT_INSTALL_DEV=1 ./install.sh
+
+peridot --version
+```
+
 Con `pip`:
 
 ```bash
@@ -53,7 +65,14 @@ Durante desarrollo:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e .
+.venv/bin/pip install -e '.[dev]'
+```
+
+Tests:
+
+```bash
+. .venv/bin/activate
+pytest -q
 ```
 
 Instalacion automatica del repo:
@@ -63,6 +82,24 @@ Instalacion automatica del repo:
 ```
 
 Eso crea una `.venv`, instala Peridot en modo editable y deja el comando `peridot` enlazado en `~/.local/bin/peridot`.
+
+## Quickstart (3 comandos)
+
+```bash
+peridot init
+peridot pack "Mi bundle" --output mi-bundle.peridot ~/.config
+peridot apply mi-bundle.peridot --dry-run
+```
+
+Notas:
+- Si ejecutas `pack` sin TTY (scripts/CI) y no pasas nombre, Peridot genera uno por defecto.
+- Recomendación: prueba siempre primero con `--dry-run`.
+
+Si quieres incluir tambien dependencias de desarrollo (por ejemplo `pytest`):
+
+```bash
+PERIDOT_INSTALL_DEV=1 ./install.sh
+```
 
 ## Flujo principal
 
