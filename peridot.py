@@ -2085,6 +2085,101 @@ def cmd_pack(args) -> None:
     console.print(f"[bold green]{trf('Created {output}', output=output)}[/bold green]")
 
 
+def cmd_bench(args) -> None:
+    """Micro-benchmark Peridot pack performance.
+
+    This creates a synthetic dataset of N files and runs `pack` multiple times
+    with different compression levels/jobs, reporting wall time and output size.
+    """
+
+    print_banner()
+
+    runs = max(1, int(args.runs))
+    file_count = max(1, int(args.files))
+    size_kb = max(1, int(args.size_kb))
+
+    # Parse compression levels like: "0,1,3,6".
+    levels: list[int] = []
+    for raw in str(args.levels).split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        levels.append(sanitize_compression_level(int(raw)))
+    if not levels:
+        levels = [DEFAULT_COMPRESSION_LEVEL]
+
+    key = load_key(args.key, create=True)
+
+    results: list[dict] = []
+
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        data_dir = root / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        # Deterministic-ish payload to make runs comparable.
+        block = (b"peridot" * 128)  # 768 bytes
+        target_size = size_kb * 1024
+
+        for i in range(file_count):
+            content = (block * ((target_size // len(block)) + 1))[:target_size]
+            (data_dir / f"file-{i:04d}.txt").write_bytes(content)
+
+        # One run per config.
+        for level in levels:
+            for jobs in [int(args.jobs)]:
+                for run_idx in range(runs):
+                    out = root / f"bench-l{level}-j{jobs}-r{run_idx}.peridot"
+                    t0 = datetime.now(timezone.utc)
+                    start = datetime.now(timezone.utc).timestamp()
+
+                    pack_args = SimpleNamespace(
+                        key=args.key,
+                        name=f"bench-l{level}-j{jobs}",
+                        paths=[str(data_dir)],
+                        output=out,
+                        description="",
+                        platform=normalize_os_name("linux"),
+                        shell="bash",
+                        arch=platform.machine().lower(),
+                        tags=[],
+                        preset="",
+                        profile="",
+                        exclude=[],
+                        notes="",
+                        after_steps=[],
+                        compression_level=level,
+                        jobs=jobs,
+                        yes=True,
+                        language=getattr(args, "language", None),
+                    )
+
+                    cmd_pack(pack_args)
+
+                    end = datetime.now(timezone.utc).timestamp()
+                    dt = end - start
+                    results.append(
+                        {
+                            "level": level,
+                            "jobs": jobs,
+                            "run": run_idx,
+                            "seconds": round(dt, 4),
+                            "output_bytes": out.stat().st_size,
+                            "started_at": t0.isoformat(),
+                        }
+                    )
+
+    # Print a compact summary.
+    console.print("\n[bold]Bench results[/bold]")
+    for row in results:
+        console.print(
+            f"- level={row['level']} jobs={row['jobs']} run={row['run']} -> {row['seconds']}s | {format_bytes(int(row['output_bytes']))}"
+        )
+
+    if args.json:
+        print(json.dumps({"results": results}, indent=2))
+
+
 def cmd_inspect(args) -> None:
     print_banner()
     manifest = manifest_from_zip(args.package)
@@ -2806,6 +2901,15 @@ def build_parser() -> argparse.ArgumentParser:
     pack_parser.add_argument("--jobs", type=int, default=None, help="Numero de workers para pack. Si no se pasa, usa settings.")
     pack_parser.add_argument("-y", "--yes", action="store_true", help="Aceptar avisos sensibles sin confirmacion")
     pack_parser.set_defaults(func=cmd_pack)
+
+    bench_parser = subparsers.add_parser("bench", help="Benchmark rapido de pack (tiempo + tamano)")
+    bench_parser.add_argument("--files", type=int, default=200, help="Numero de ficheros sinteticos")
+    bench_parser.add_argument("--size-kb", type=int, default=4, help="Tamano por fichero (KB)")
+    bench_parser.add_argument("--runs", type=int, default=1, help="Repeticiones por configuracion")
+    bench_parser.add_argument("--levels", default="0,1,3", help="Niveles de compresion separados por coma")
+    bench_parser.add_argument("--jobs", type=int, default=DEFAULT_JOBS, help="Workers para pack")
+    bench_parser.add_argument("--json", action="store_true", help="Imprime tambien JSON con resultados")
+    bench_parser.set_defaults(func=cmd_bench)
 
     inspect_parser = subparsers.add_parser("inspect", help="Muestra la ficha de un paquete")
     inspect_parser.add_argument("package", type=Path, help="Ruta del paquete .peridot")
