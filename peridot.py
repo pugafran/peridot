@@ -380,7 +380,10 @@ PRESET_LIBRARY = {
         "paths": [
             "~/.gitconfig",
             "~/.wslconfig",
+            # PowerShell 7+ / Windows Terminal
             "~/Documents/PowerShell",
+            # Windows PowerShell (legacy)
+            "~/Documents/WindowsPowerShell",
             "~/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState",
         ],
     },
@@ -995,7 +998,13 @@ def config_groups_for_os(os_name: str) -> list[ConfigGroup]:
                 "Shells",
                 "PowerShell",
                 "PowerShell profiles and aliases from Documents/PowerShell",
-                ("~/Documents/PowerShell", "~/OneDrive/Documents/PowerShell", "~/.config/powershell"),
+                (
+                    "~/Documents/PowerShell",
+                    "~/Documents/WindowsPowerShell",
+                    "~/OneDrive/Documents/PowerShell",
+                    "~/OneDrive/Documents/WindowsPowerShell",
+                    "~/.config/powershell",
+                ),
                 default=True,
             ),
             ConfigGroup(
