@@ -348,6 +348,18 @@ PRESET_LIBRARY = {
             "~/.gitconfig",
         ],
     },
+    "linux-fish": {
+        "description": "Linux + fish dotfiles",
+        "platform": "linux",
+        "shell": "fish",
+        "tags": ["dotfiles", "fish", "linux"],
+        "paths": [
+            "~/.config/fish",
+            "~/.local/share/fish",
+            "~/.config",
+            "~/.gitconfig",
+        ],
+    },
     "linux-bash": {
         "description": "Linux + bash dotfiles",
         "platform": "linux",
@@ -3164,7 +3176,7 @@ def build_parser() -> argparse.ArgumentParser:
     pack_parser.add_argument("--shell", default="", help="Shell o runtime principal: fish, zsh, powershell, bash...")
     pack_parser.add_argument("--arch", default="", help="Arquitectura objetivo: arm64, x86_64 o any")
     pack_parser.add_argument("--tag", dest="tags", action="append", default=[], help="Tag del bundle. Repetible.")
-    pack_parser.add_argument("--preset", default="", help="Preset de dotfiles: macos-fish, macos-zsh, linux-zsh, linux-bash, windows-powershell")
+    pack_parser.add_argument("--preset", default="", help="Preset de dotfiles: macos-fish, macos-zsh, linux-fish, linux-zsh, linux-bash, windows-powershell")
     pack_parser.add_argument("--profile", default="", help="Perfil guardado para reutilizar configuracion")
     pack_parser.add_argument("--exclude", action="append", default=[], help="Glob a excluir. Repetible.")
     pack_parser.add_argument("--notes", default="", help="Notas del bundle")
