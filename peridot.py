@@ -449,8 +449,21 @@ def sanitize_jobs(value: object) -> int:
 
 
 def sanitize_language(value: object) -> str:
-    language = str(value or DEFAULT_SETTINGS["language"]).strip().lower()
-    return language if language in {"es", "en"} else DEFAULT_SETTINGS["language"]
+    """Normalize language values.
+
+    Accepts exact codes ("es", "en") and common locale variants such as
+    "es-ES", "en_US" or "EN-us" by reducing them to the base language.
+    """
+
+    raw = str(value or DEFAULT_SETTINGS["language"]).strip().lower().replace("_", "-")
+    if raw in {"es", "en"}:
+        return raw
+
+    base = raw.split("-", 1)[0] if raw else ""
+    if base in {"es", "en"}:
+        return base
+
+    return DEFAULT_SETTINGS["language"]
 
 
 def slugify(value: str) -> str:
