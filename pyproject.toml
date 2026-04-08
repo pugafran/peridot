@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "peridot-cli"
 version = "0.4.0"
 description = "Visual CLI for portable configuration bundles"
-readme = "readme.md"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "cryptography>=42.0.0,<46.0.0",
@@ -14,6 +14,7 @@ dependencies = [
   "rich>=13.7.0,<15.0.0",
   "zstandard>=0.23.0,<1.0.0",
 ]
+
 authors = [
   { name = "Francisco Puga Lojo" }
 ]
@@ -30,6 +31,12 @@ classifiers = [
   "Topic :: System :: Archiving",
   "Topic :: Utilities",
 ]
+
+[project.urls]
+Homepage = "https://github.com/pugafran/peridot"
+Repository = "https://github.com/pugafran/peridot"
+Issues = "https://github.com/pugafran/peridot/issues"
+Changelog = "https://github.com/pugafran/peridot/blob/main/CHANGELOG.md"
 
 [project.scripts]
 peridot = "peridot:main"

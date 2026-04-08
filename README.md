@@ -47,6 +47,8 @@ Los payloads contienen el contenido real de cada fichero, comprimido con `zstd` 
 
 ### Windows (recomendado): pipx
 
+Nota: el nombre en PyPI será **peridot-cli** ("peridot" ya está ocupado).
+
 `pipx` instala CLIs de Python en un entorno aislado y te deja el comando en PATH.
 
 1) Instala **Python 3.11+** (desde python.org o Microsoft Store) y asegúrate de que está en PATH.
