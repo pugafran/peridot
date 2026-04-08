@@ -806,10 +806,11 @@ def fingerprint_key(key: bytes) -> str:
 
 
 def decode_aesgcm_key_bytes(raw: bytes | str) -> bytes | None:
-    """Decode a 32-byte AES-GCM key from raw bytes, text, or base64url.
+    """Decode a 32-byte AES-GCM key from raw bytes, text, or base64.
 
     Accepts:
     - Raw 32 bytes
+    - Hex-encoded 32 bytes (64 hex chars, with optional whitespace/newlines)
     - base64url-encoded bytes (with or without padding, with optional whitespace/newlines)
     - A string containing either of the above (UTF-8)
     """
@@ -825,6 +826,15 @@ def decode_aesgcm_key_bytes(raw: bytes | str) -> bytes | None:
     cleaned = b"".join(raw_bytes.split())
     if not cleaned:
         return None
+
+    # Accept 64-hex-char keys (common when keys are copy/pasted from CLIs).
+    if len(cleaned) == 64:
+        try:
+            decoded_hex = bytes.fromhex(cleaned.decode("ascii"))
+        except (UnicodeDecodeError, ValueError):
+            decoded_hex = None
+        if decoded_hex is not None and len(decoded_hex) == 32:
+            return decoded_hex
 
     # base64 decoders expect padding; allow unpadded base64url keys.
     missing_padding = (-len(cleaned)) % 4
