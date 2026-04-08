@@ -34,6 +34,8 @@ def test_mcp_initialize_and_tools_list_and_version():
         names = {t["name"] for t in tools["result"]["tools"]}
         assert "peridot_version" in names
         assert "peridot_init" in names
+        assert "peridot_pack" in names
+        assert "peridot_apply_dry_run" in names
 
         ver = send(
             proc,

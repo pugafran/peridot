@@ -132,6 +132,131 @@ TOOLS: list[Tool] = [
             "additionalProperties": False,
         },
     ),
+    Tool(
+        name="peridot_pack",
+        description="Create a .peridot bundle. Defaults are safe and script-friendly.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "paths": {"type": "array", "items": {"type": "string"}},
+                "output": {"type": "string"},
+                "preset": {"type": "string"},
+                "platform": {"type": "string"},
+                "shell": {"type": "string"},
+                "arch": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "exclude": {"type": "array", "items": {"type": "string"}},
+                "compression_level": {"type": "integer", "minimum": 0, "maximum": 9},
+                "jobs": {"type": "integer", "minimum": 1},
+                "yes": {"type": "boolean", "default": True},
+            },
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
+        name="peridot_inspect",
+        description="Inspect a .peridot bundle (card + optional file list/json).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "package": {"type": "string"},
+                "files": {"type": "boolean", "default": True},
+                "all": {"type": "boolean", "default": False},
+                "json": {"type": "boolean", "default": False},
+            },
+            "required": ["package"],
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
+        name="peridot_manifest",
+        description="Print manifest for a bundle.",
+        input_schema={
+            "type": "object",
+            "properties": {"package": {"type": "string"}},
+            "required": ["package"],
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
+        name="peridot_diff",
+        description="Diff a bundle against a target directory.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "package": {"type": "string"},
+                "target": {"type": "string"},
+                "no_hash": {"type": "boolean", "default": False},
+                "json": {"type": "boolean", "default": False},
+            },
+            "required": ["package"],
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
+        name="peridot_verify",
+        description="Verify a bundle integrity (optionally deep).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "package": {"type": "string"},
+                "deep": {"type": "boolean", "default": True},
+                "json": {"type": "boolean", "default": False},
+            },
+            "required": ["package"],
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
+        name="peridot_bench",
+        description="Run pack benchmark.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "files": {"type": "integer", "minimum": 1, "default": 200},
+                "size_kb": {"type": "integer", "minimum": 1, "default": 4},
+                "runs": {"type": "integer", "minimum": 1, "default": 1},
+                "levels": {"type": "string", "default": "0,1,3"},
+                "jobs": {"type": "integer", "minimum": 1},
+                "json": {"type": "boolean", "default": False},
+                "out": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
+        name="peridot_apply_dry_run",
+        description="Dry-run apply: shows what would change without writing.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "package": {"type": "string"},
+                "target": {"type": "string"},
+                "ignore_platform": {"type": "boolean", "default": False},
+                "select": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["package"],
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
+        name="peridot_apply",
+        description="Apply a bundle. Requires explicit confirmation.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "package": {"type": "string"},
+                "target": {"type": "string"},
+                "backup_dir": {"type": "string"},
+                "ignore_platform": {"type": "boolean", "default": False},
+                "select": {"type": "array", "items": {"type": "string"}},
+                "confirm": {"type": "boolean", "default": False},
+            },
+            "required": ["package"],
+            "additionalProperties": False,
+        },
+    ),
 ]
 
 
@@ -163,6 +288,11 @@ def _handle_tools_list() -> JSON:
     }
 
 
+def _tool_run_cli(argv: list[str]) -> JSON:
+    code, out, err = _capture_peridot_main(argv)
+    return {"ok": code == 0, "exitCode": code, "stdout": out, "stderr": err, "argv": argv}
+
+
 def _handle_tools_call(params: JSON) -> JSON:
     name = params.get("name")
     arguments = params.get("arguments") or {}
@@ -173,6 +303,117 @@ def _handle_tools_call(params: JSON) -> JSON:
         payload = _tool_peridot_presets_list()
     elif name == "peridot_init":
         payload = _tool_peridot_init(force=bool(arguments.get("force", False)))
+
+    elif name == "peridot_pack":
+        argv = ["pack"]
+        if arguments.get("name"):
+            argv.append(str(arguments["name"]))
+        if arguments.get("preset"):
+            argv.extend(["--preset", str(arguments["preset"])])
+        if arguments.get("output"):
+            argv.extend(["--output", str(arguments["output"])])
+        if arguments.get("platform"):
+            argv.extend(["--platform", str(arguments["platform"])])
+        if arguments.get("shell"):
+            argv.extend(["--shell", str(arguments["shell"])])
+        if arguments.get("arch"):
+            argv.extend(["--arch", str(arguments["arch"])])
+        for tag in arguments.get("tags") or []:
+            argv.extend(["--tag", str(tag)])
+        for ex in arguments.get("exclude") or []:
+            argv.extend(["--exclude", str(ex)])
+        if arguments.get("compression_level") is not None:
+            argv.extend(["--compression-level", str(int(arguments["compression_level"]))])
+        if arguments.get("jobs") is not None:
+            argv.extend(["--jobs", str(int(arguments["jobs"]))])
+        if arguments.get("yes", True):
+            argv.append("--yes")
+        for p in arguments.get("paths") or []:
+            argv.append(str(p))
+        payload = _tool_run_cli(argv)
+
+    elif name == "peridot_inspect":
+        argv = ["inspect", str(arguments["package"])]
+        if arguments.get("files", True):
+            argv.append("--files")
+        if arguments.get("all", False):
+            argv.append("--all")
+        if arguments.get("json", False):
+            argv.append("--json")
+        payload = _tool_run_cli(argv)
+
+    elif name == "peridot_manifest":
+        payload = _tool_run_cli(["manifest", str(arguments["package"])])
+
+    elif name == "peridot_diff":
+        argv = ["diff", str(arguments["package"]) ]
+        if arguments.get("target"):
+            argv.extend(["--target", str(arguments["target"])])
+        if arguments.get("no_hash", False):
+            argv.append("--no-hash")
+        if arguments.get("json", False):
+            argv.append("--json")
+        payload = _tool_run_cli(argv)
+
+    elif name == "peridot_verify":
+        argv = ["verify", str(arguments["package"])]
+        if arguments.get("deep", True):
+            argv.append("--deep")
+        if arguments.get("json", False):
+            argv.append("--json")
+        payload = _tool_run_cli(argv)
+
+    elif name == "peridot_bench":
+        argv = [
+            "bench",
+            "--files",
+            str(int(arguments.get("files", 200))),
+            "--size-kb",
+            str(int(arguments.get("size_kb", 4))),
+            "--runs",
+            str(int(arguments.get("runs", 1))),
+            "--levels",
+            str(arguments.get("levels", "0,1,3")),
+        ]
+        if arguments.get("jobs") is not None:
+            argv.extend(["--jobs", str(int(arguments["jobs"]))])
+        if arguments.get("out"):
+            argv.extend(["--out", str(arguments["out"])])
+        if arguments.get("json", False):
+            argv.append("--json")
+        payload = _tool_run_cli(argv)
+
+    elif name == "peridot_apply_dry_run":
+        argv = ["apply", str(arguments["package"]), "--dry-run"]
+        if arguments.get("target"):
+            argv.extend(["--target", str(arguments["target"])])
+        if arguments.get("ignore_platform", False):
+            argv.append("--ignore-platform")
+        for p in arguments.get("select") or []:
+            argv.extend(["--select", str(p)])
+        argv.append("--yes")
+        payload = _tool_run_cli(argv)
+
+    elif name == "peridot_apply":
+        if not bool(arguments.get("confirm", False)):
+            payload = {
+                "ok": False,
+                "exitCode": 1,
+                "error": "Refusing to apply without confirm=true. Use peridot_apply_dry_run first.",
+            }
+        else:
+            argv = ["apply", str(arguments["package"])]
+            if arguments.get("target"):
+                argv.extend(["--target", str(arguments["target"])])
+            if arguments.get("backup_dir"):
+                argv.extend(["--backup-dir", str(arguments["backup_dir"])])
+            if arguments.get("ignore_platform", False):
+                argv.append("--ignore-platform")
+            for p in arguments.get("select") or []:
+                argv.extend(["--select", str(p)])
+            argv.append("--yes")
+            payload = _tool_run_cli(argv)
+
     else:
         raise ValueError(f"Unknown tool: {name}")
 
