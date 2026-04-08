@@ -83,6 +83,18 @@ Instalacion automatica del repo:
 
 Eso crea una `.venv`, instala Peridot en modo editable y deja el comando `peridot` enlazado en `~/.local/bin/peridot`.
 
+## Quickstart (3 comandos)
+
+```bash
+peridot init
+peridot pack "Mi bundle" --output mi-bundle.peridot ~/.config
+peridot apply mi-bundle.peridot --dry-run
+```
+
+Notas:
+- Si ejecutas `pack` sin TTY (scripts/CI) y no pasas nombre, Peridot genera uno por defecto.
+- Recomendación: prueba siempre primero con `--dry-run`.
+
 Si quieres incluir tambien dependencias de desarrollo (por ejemplo `pytest`):
 
 ```bash
