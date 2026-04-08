@@ -780,9 +780,12 @@ def load_profiles(profile_path: Path = DEFAULT_PROFILE_STORE) -> dict:
     if not profile_path.exists():
         return {}
     try:
-        return json.loads(profile_path.read_text())
+        raw = json.loads(profile_path.read_text())
     except json.JSONDecodeError as exc:
         die(f"El store de perfiles es invalido: {exc}")
+    if not isinstance(raw, dict):
+        die("El store de perfiles debe ser un objeto JSON.")
+    return raw
 
 
 def save_profiles(data: dict, profile_path: Path = DEFAULT_PROFILE_STORE) -> None:
@@ -835,10 +838,11 @@ def fingerprint_key(key: bytes) -> str:
 
 
 def decode_aesgcm_key_bytes(raw: bytes | str) -> bytes | None:
-    """Decode a 32-byte AES-GCM key from raw bytes, text, or base64url.
+    """Decode a 32-byte AES-GCM key from raw bytes, text, or base64.
 
     Accepts:
     - Raw 32 bytes
+    - Hex-encoded 32 bytes (64 hex chars, with optional whitespace/newlines)
     - base64url-encoded bytes (with or without padding, with optional whitespace/newlines)
     - A string containing either of the above (UTF-8)
     """
@@ -854,6 +858,15 @@ def decode_aesgcm_key_bytes(raw: bytes | str) -> bytes | None:
     cleaned = b"".join(raw_bytes.split())
     if not cleaned:
         return None
+
+    # Accept 64-hex-char keys (common when keys are copy/pasted from CLIs).
+    if len(cleaned) == 64:
+        try:
+            decoded_hex = bytes.fromhex(cleaned.decode("ascii"))
+        except (UnicodeDecodeError, ValueError):
+            decoded_hex = None
+        if decoded_hex is not None and len(decoded_hex) == 32:
+            return decoded_hex
 
     # base64 decoders expect padding; allow unpadded base64url keys.
     missing_padding = (-len(cleaned)) % 4
@@ -1374,13 +1387,34 @@ def source_root_for_path(path: Path) -> Path:
 
 
 def should_exclude_entry(path: Path) -> bool:
+    """Return True when a discovered path should be excluded from packing.
+
+    The default rules are anchored to the user's home directory because Peridot
+    mostly targets dotfiles.
+
+    Additionally, we exclude well-known junk basenames (e.g. .DS_Store, .cache)
+    anywhere in the tree, including when packing paths outside $HOME.
+    """
+
+    excluded_basenames = {
+        Path(excluded).name for excluded in DEFAULT_EXCLUDES if "/" not in excluded
+    }
+
+    # Basename/segment-based exclusion: applies everywhere.
+    # This ensures junk files like .DS_Store are filtered even when nested.
+    if any(part in excluded_basenames for part in path.parts):
+        return True
+
     home = Path.home()
     try:
         relative = path.relative_to(home).as_posix()
     except ValueError:
         return False
 
+    # Home-anchored exclusions (exact or prefix matches).
     for excluded in DEFAULT_EXCLUDES:
+        if "/" not in excluded:
+            continue
         if relative == excluded or relative.startswith(f"{excluded}/"):
             return True
     return False

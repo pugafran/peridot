@@ -52,3 +52,27 @@ def test_decode_aesgcm_key_bytes_accepts_string_and_whitespace():
     encoded = peridot.base64.urlsafe_b64encode(raw_key).rstrip(b"=").decode("ascii")
     encoded_wrapped = f"\n  {encoded[:10]}\n{encoded[10:]}  \n"
     assert peridot.decode_aesgcm_key_bytes(encoded_wrapped) == raw_key
+
+
+def test_decode_aesgcm_key_bytes_accepts_hex():
+    raw_key = bytes(range(32))
+    hex_key = raw_key.hex()
+    assert peridot.decode_aesgcm_key_bytes(hex_key) == raw_key
+    assert peridot.decode_aesgcm_key_bytes(f"\n {hex_key[:20]}\n{hex_key[20:]} \n") == raw_key
+
+
+def test_should_exclude_entry_filters_common_basenames_outside_home(tmp_path):
+    assert peridot.should_exclude_entry(tmp_path / ".DS_Store") is True
+    assert peridot.should_exclude_entry(tmp_path / ".cache" / "foo.txt") is True
+    assert peridot.should_exclude_entry(tmp_path / "regular" / "file.txt") is False
+
+
+def test_load_profiles_rejects_non_dict(tmp_path):
+    profiles_path = tmp_path / "profiles.json"
+    profiles_path.write_text("[]\n")
+    try:
+        peridot.load_profiles(profile_path=profiles_path)
+    except SystemExit as exc:
+        assert exc.code == 1
+    else:
+        raise AssertionError("expected SystemExit")
