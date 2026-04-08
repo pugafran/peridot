@@ -297,7 +297,17 @@ def _handle_tools_list() -> JSON:
 
 def _tool_run_cli(argv: list[str]) -> JSON:
     code, out, err = _capture_peridot_main(argv)
-    return {"ok": code == 0, "exitCode": code, "stdout": out, "stderr": err, "argv": argv}
+    payload: JSON = {"ok": code == 0, "exitCode": code, "stdout": out, "stderr": err, "argv": argv}
+
+    # Best-effort: if stdout is pure JSON, parse it for structured consumption.
+    out_stripped = out.strip()
+    if out_stripped.startswith("{") or out_stripped.startswith("["):
+        try:
+            payload["data"] = json.loads(out_stripped)
+        except Exception:
+            pass
+
+    return payload
 
 
 def _handle_tools_call(params: JSON) -> JSON:
@@ -340,34 +350,25 @@ def _handle_tools_call(params: JSON) -> JSON:
         payload = _tool_run_cli(argv)
 
     elif name == "peridot_inspect":
-        argv = ["inspect", str(arguments["package"])]
-        if arguments.get("files", True):
-            argv.append("--files")
-        if arguments.get("all", False):
-            argv.append("--all")
-        if arguments.get("json", False):
-            argv.append("--json")
+        # Prefer JSON for machine consumption.
+        argv = ["inspect", str(arguments["package"]), "--json"]
         payload = _tool_run_cli(argv)
 
     elif name == "peridot_manifest":
         payload = _tool_run_cli(["manifest", str(arguments["package"])])
 
     elif name == "peridot_diff":
-        argv = ["diff", str(arguments["package"]) ]
+        argv = ["diff", str(arguments["package"]), "--json"]
         if arguments.get("target"):
             argv.extend(["--target", str(arguments["target"])])
         if arguments.get("no_hash", False):
             argv.append("--no-hash")
-        if arguments.get("json", False):
-            argv.append("--json")
         payload = _tool_run_cli(argv)
 
     elif name == "peridot_verify":
-        argv = ["verify", str(arguments["package"])]
+        argv = ["verify", str(arguments["package"]), "--json"]
         if arguments.get("deep", True):
             argv.append("--deep")
-        if arguments.get("json", False):
-            argv.append("--json")
         payload = _tool_run_cli(argv)
 
     elif name == "peridot_bench":
@@ -381,13 +382,12 @@ def _handle_tools_call(params: JSON) -> JSON:
             str(int(arguments.get("runs", 1))),
             "--levels",
             str(arguments.get("levels", "0,1,3")),
+            "--json",
         ]
         if arguments.get("jobs") is not None:
             argv.extend(["--jobs", str(int(arguments["jobs"]))])
         if arguments.get("out"):
             argv.extend(["--out", str(arguments["out"])])
-        if arguments.get("json", False):
-            argv.append("--json")
         payload = _tool_run_cli(argv)
 
     elif name == "peridot_apply_dry_run":
