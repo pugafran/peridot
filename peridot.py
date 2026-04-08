@@ -423,12 +423,29 @@ def sanitize_compression_level(value: object) -> int:
     return max(0, min(9, level))
 
 
+def max_reasonable_jobs(cpu_count: int | None = None) -> int:
+    """Return a safe upper bound for parallel jobs.
+
+    We keep it tied to available CPU to avoid spawning an excessive amount of
+    processes/threads on small machines, while still allowing high-core hosts
+    to take advantage of their capacity.
+    """
+
+    cpu = cpu_count if cpu_count is not None else (os.cpu_count() or 2)
+    try:
+        cpu_int = int(cpu)
+    except (TypeError, ValueError):
+        cpu_int = 2
+    cpu_int = max(1, cpu_int)
+    return max(1, min(64, cpu_int * 2))
+
+
 def sanitize_jobs(value: object) -> int:
     try:
         jobs = int(value)
     except (TypeError, ValueError):
         jobs = DEFAULT_JOBS
-    return max(1, min(32, jobs))
+    return max(1, min(max_reasonable_jobs(), jobs))
 
 
 def sanitize_language(value: object) -> str:

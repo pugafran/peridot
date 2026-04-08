@@ -19,6 +19,8 @@ def test_sanitize_compression_level():
     assert peridot.sanitize_compression_level(9) == 9
 
 
-def test_sanitize_jobs():
-    assert peridot.sanitize_jobs(1) >= 1
-    assert peridot.sanitize_jobs(999) >= 1
+def test_sanitize_jobs(monkeypatch):
+    monkeypatch.setattr(peridot.os, "cpu_count", lambda: 4)
+
+    assert peridot.sanitize_jobs(1) == 1
+    assert peridot.sanitize_jobs(999) == 8  # 2 * cpu_count
