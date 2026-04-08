@@ -707,8 +707,28 @@ def create_pack_executor(requested_jobs: int):
 
 
 def detect_shell() -> str:
+    """Best-effort shell detection.
+
+    Notes:
+        On Windows, COMSPEC often points to cmd.exe even when running inside
+        PowerShell/Windows Terminal. We prefer detecting PowerShell via the
+        presence of the PSModulePath env var.
+    """
+
+    # Windows: PowerShell sets PSModulePath.
+    if os.environ.get("PSModulePath"):
+        return "powershell"
+
     shell = os.environ.get("SHELL") or os.environ.get("COMSPEC") or ""
-    return Path(shell).name.lower()
+    name = Path(shell).name.lower()
+
+    # Normalize common Windows variants.
+    if name in {"pwsh", "pwsh.exe", "powershell", "powershell.exe"}:
+        return "powershell"
+    if name in {"cmd", "cmd.exe"}:
+        return "cmd"
+
+    return name
 
 
 def ensure_parent(path: Path) -> None:
