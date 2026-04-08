@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 - 2026-04-08
+
+- Packaging: prepare PyPI publishing (README.md casing + project URLs).
+- CI: add publish workflow for tags v* (uses PYPI_API_TOKEN).
+
 ## 0.4.0 - 2026-04-08
 
 - pack: significant speedup by writing encrypted payloads directly into the output ZIP (avoids temp payload files).

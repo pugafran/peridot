@@ -68,7 +68,7 @@ except ModuleNotFoundError:
 QUESTIONARY_AVAILABLE = questionary is not None and Choice is not None
 
 
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.4.1"
 PACKAGE_VERSION = 1
 DEFAULT_COMPRESSION_LEVEL = 1
 DEFAULT_JOBS = max(2, min(8, os.cpu_count() or 2))
