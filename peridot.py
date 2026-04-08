@@ -1295,9 +1295,43 @@ def compress_payload(raw: bytes, compression_level: int) -> bytes:
     return gzip.compress(raw, compresslevel=compression_level, mtime=0)
 
 
-def choose_compression(raw: bytes, relative_path: str, compression_level: int) -> tuple[str, bytes]:
+def shannon_entropy(sample: bytes) -> float:
+    """Return Shannon entropy (bits/byte) for a sample."""
+
+    if not sample:
+        return 0.0
+
+    counts = [0] * 256
+    for b in sample:
+        counts[b] += 1
+
+    import math
+
+    length = len(sample)
+    entropy = 0.0
+    for c in counts:
+        if not c:
+            continue
+        p = c / length
+        entropy -= p * math.log2(p)
+    return entropy
+
+
+def likely_incompressible(raw: bytes, relative_path: str) -> bool:
     suffix = Path(relative_path).suffix.lower()
-    if compression_level <= 0 or suffix in INCOMPRESSIBLE_SUFFIXES:
+    if suffix in INCOMPRESSIBLE_SUFFIXES:
+        return True
+    # Sample up to 32 KiB to estimate entropy; high entropy tends to compress poorly.
+    sample = raw[: 32 * 1024]
+    if len(sample) < 1024:
+        return False
+    return shannon_entropy(sample) > 7.6
+
+
+def choose_compression(raw: bytes, relative_path: str, compression_level: int) -> tuple[str, bytes]:
+    if compression_level <= 0:
+        return "none", raw
+    if likely_incompressible(raw, relative_path):
         return "none", raw
     compressed = compress_payload(raw, compression_level)
     if len(compressed) >= int(len(raw) * 0.98):
