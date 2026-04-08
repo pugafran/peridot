@@ -751,9 +751,12 @@ def load_profiles(profile_path: Path = DEFAULT_PROFILE_STORE) -> dict:
     if not profile_path.exists():
         return {}
     try:
-        return json.loads(profile_path.read_text())
+        raw = json.loads(profile_path.read_text())
     except json.JSONDecodeError as exc:
         die(f"El store de perfiles es invalido: {exc}")
+    if not isinstance(raw, dict):
+        die("El store de perfiles debe ser un objeto JSON.")
+    return raw
 
 
 def save_profiles(data: dict, profile_path: Path = DEFAULT_PROFILE_STORE) -> None:
