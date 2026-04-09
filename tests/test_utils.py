@@ -13,6 +13,12 @@ def test_slugify_normalizes_accents():
     assert peridot.slugify("Canción") == "cancion"
 
 
+def test_slugify_treats_common_symbols_as_separators():
+    assert peridot.slugify("foo+bar") == "foo-bar"
+    assert peridot.slugify("foo@bar") == "foo-bar"
+    assert peridot.slugify("foo.bar") == "foo-bar"
+
+
 def test_format_bytes():
     assert peridot.format_bytes(0) == "0 B"
     assert peridot.format_bytes(1024) == "1.0 KB"

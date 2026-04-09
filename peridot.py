@@ -557,15 +557,21 @@ def slugify(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value)
     normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
 
+    # Treat any non-alphanumeric character as a separator. This makes common
+    # inputs like "foo+bar" or "foo@bar" produce a readable slug instead of
+    # silently dropping the separator.
     cleaned: list[str] = []
+    last_was_sep = True
     for char in normalized.lower():
         if char.isalnum():
             cleaned.append(char)
-        elif char in {" ", "-", "_", "."}:
+            last_was_sep = False
+            continue
+        if not last_was_sep:
             cleaned.append("-")
+            last_was_sep = True
+
     slug = "".join(cleaned).strip("-")
-    while "--" in slug:
-        slug = slug.replace("--", "-")
     return slug or "bundle"
 
 
