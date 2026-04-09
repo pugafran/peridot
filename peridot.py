@@ -18,7 +18,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from typing import Callable, Iterable
@@ -756,10 +756,17 @@ def detect_shell() -> str:
         return "powershell"
 
     shell = os.environ.get("SHELL") or os.environ.get("COMSPEC") or ""
+    shell = shell.strip().strip('"').strip("'")
     if not shell.strip():
         return "unknown"
 
-    name = Path(shell).name.lower()
+    # When running tests on POSIX, Windows paths with backslashes would be
+    # treated as a single filename by pathlib.Path. Detect those cases and
+    # parse them as Windows paths explicitly.
+    if "\\" in shell or (":" in shell and "/" not in shell):
+        name = PureWindowsPath(shell).name.lower()
+    else:
+        name = Path(shell).name.lower()
 
     # Normalize common Windows variants.
     if name in {"pwsh", "pwsh.exe", "powershell", "powershell.exe"}:

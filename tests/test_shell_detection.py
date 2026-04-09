@@ -17,6 +17,13 @@ def test_detect_shell_cmd_when_comspec_cmd(monkeypatch):
     assert peridot.detect_shell() == "cmd"
 
 
+def test_detect_shell_cmd_when_comspec_cmd_backslashes(monkeypatch):
+    monkeypatch.delenv("SHELL", raising=False)
+    monkeypatch.delenv("PSModulePath", raising=False)
+    monkeypatch.setenv("COMSPEC", r"C:\\Windows\\System32\\cmd.exe")
+    assert peridot.detect_shell() == "cmd"
+
+
 def test_detect_shell_unix(monkeypatch):
     monkeypatch.delenv("PSModulePath", raising=False)
     monkeypatch.setenv("SHELL", "/bin/zsh")
