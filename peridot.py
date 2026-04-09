@@ -1601,12 +1601,45 @@ def build_payload_record(
     return encrypted, record
 
 
+def _is_sensitive_path(name: str, path_str: str) -> bool:
+    """Heuristic detection of sensitive files.
+
+    We intentionally avoid naive substring matching for generic tokens (e.g. "token"),
+    because that creates noisy false positives (e.g. "stockton").
+
+    Args:
+        name: Basename (lowercased).
+        path_str: Relative path (lowercased, posix-style).
+    """
+
+    # Exact dotfiles / well-known filenames.
+    exact_names = {".env", ".npmrc", ".netrc", ".pypirc", "known_hosts"}
+    if name in exact_names:
+        return True
+
+    # SSH private keys and similar.
+    key_prefixes = {"id_rsa", "id_ed25519", "id_ecdsa"}
+    if any(name == prefix or name.startswith(f"{prefix}.") for prefix in key_prefixes):
+        return True
+
+    # Generic tokens: match as a path segment or separated word, not a substring.
+    # Accept separators: / . _ - (and Windows \ just in case).
+    import re
+
+    for token in ("credentials", "token"):
+        pattern = rf"(^|[\\/._-]){re.escape(token)}([\\/._-]|$)"
+        if re.search(pattern, name) or re.search(pattern, path_str):
+            return True
+
+    return False
+
+
 def detect_sensitive_entries(entries: list[FileEntry]) -> list[FileEntry]:
     sensitive: list[FileEntry] = []
     for entry in entries:
         name = entry.source.name.lower()
         path_str = entry.relative_path.lower()
-        if any(pattern in name or pattern in path_str for pattern in SENSITIVE_PATTERNS):
+        if _is_sensitive_path(name, path_str):
             sensitive.append(entry)
     return sensitive
 
