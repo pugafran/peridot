@@ -1,50 +1,51 @@
-import os
-import stat
+import json
 from pathlib import Path
-
-import pytest
 
 import peridot
 
 
-@pytest.mark.skipif(os.name == "nt", reason="Windows chmod semantics differ; skip this POSIX-only test")
-def test_pack_skips_unreadable_file_instead_of_crashing(tmp_path: Path, capsys):
+def test_pack_skips_unreadable_file_instead_of_crashing(tmp_path: Path, capsys, monkeypatch):
     peridot.main(["init", "--force"])
     capsys.readouterr()  # clear init output
 
     readable = tmp_path / "ok.txt"
-    unreadable = tmp_path / "nope.txt"
+    bad = tmp_path / "nope.txt"
     readable.write_text("ok", encoding="utf-8")
-    unreadable.write_text("secret", encoding="utf-8")
+    bad.write_text("secret", encoding="utf-8")
 
-    # Remove read permissions.
-    unreadable.chmod(0)
-    try:
-        unreadable.read_bytes()
-        pytest.skip("Could not make file unreadable on this filesystem/user; skipping")
-    except PermissionError:
-        pass
+    original = peridot.build_payload_job
+
+    def patched_build_payload_job(source_path, relative_path, mode, payload_name, key, compression_level):
+        if relative_path.endswith("nope.txt"):
+            raise PermissionError("simulated permission error")
+        return original(source_path, relative_path, mode, payload_name, key, compression_level)
+
+    monkeypatch.setattr(peridot, "build_payload_job", patched_build_payload_job)
+
+    # Ensure this test runs in-process (threads), so monkeypatches apply.
+    from concurrent.futures import ThreadPoolExecutor
+
+    monkeypatch.setattr(peridot, "create_pack_executor", lambda requested_jobs: (ThreadPoolExecutor(max_workers=1), "threads"))
 
     out = tmp_path / "bundle.peridot"
-    peridot.main([
-        "pack",
-        "test",
-        str(readable),
-        str(unreadable),
-        "--yes",
-        "--output",
-        str(out),
-        "--json",
-    ])
+    peridot.main(
+        [
+            "pack",
+            "test",
+            str(readable),
+            str(bad),
+            "--yes",
+            "--output",
+            str(out),
+            "--json",
+            "--jobs",
+            "1",
+        ]
+    )
 
-    captured = capsys.readouterr().out
-    import json
-    payload = json.loads(captured)
+    payload = json.loads(capsys.readouterr().out)
     assert payload["skipped"] == 1
 
     manifest = peridot.manifest_from_zip(out)
     skipped = manifest["bundle"].get("skipped_files")
     assert skipped and skipped[0]["path"].endswith("nope.txt")
-
-    # Cleanup permissions for tmpdir removal.
-    unreadable.chmod(stat.S_IRUSR | stat.S_IWUSR)
