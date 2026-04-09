@@ -2027,14 +2027,15 @@ def discover_local_bundles(base_dir: Path | None = None) -> list[Path]:
 
 def render_local_bundle_table(base_dir: Path | None = None) -> None:
     bundles = discover_local_bundles(base_dir)
+    if not bundles:
+        # Avoid rendering a "fake" table row which can get visually truncated in narrow terminals.
+        console.print(f"[dim]{tr('No hay bundles .peridot en este directorio')}[/dim]")
+        return
+
     table = Table(title=tr("Bundles locales"), header_style="bold cyan")
     table.add_column("#", style="dim", justify="right")
     table.add_column("File", style="white")
     table.add_column("Size", justify="right", style="green")
-    if not bundles:
-        table.add_row("-", tr("No hay bundles .peridot en este directorio"), "-")
-        console.print(table)
-        return
 
     for index, bundle in enumerate(bundles, start=1):
         table.add_row(str(index), bundle.name, format_bytes(bundle.stat().st_size))
