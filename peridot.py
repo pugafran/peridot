@@ -187,7 +187,7 @@ TRANSLATIONS = {
         "Ejecuta Peridot directamente en una terminal interactiva.": "Run Peridot directly in an interactive terminal.",
         "falta la dependencia 'questionary' en este Python.": "the 'questionary' dependency is missing in this Python.",
         "Usa el binario instalado con './install.sh' o ejecuta 'python3 -m pip install -r requirements.txt'.": "Use the binary installed with './install.sh' or run 'python3 -m pip install -r requirements.txt'.",
-        "Select groups": "Select groups",
+        "Selecciona grupos": "Select groups",
         "Selecciona rutas": "Select paths",
         "Selecciona rutas para este bundle": "Select paths for this bundle",
         "Selecciona grupos de configuracion": "Select config groups",
@@ -1337,7 +1337,7 @@ def interactive_select_config_groups(os_name: str, shell_name: str) -> list[Path
             console.print(
                 "[dim]Toggle with numbers like '1 4 7'. Commands: [b]a[/b]=all, [b]n[/b]=none, [b]d[/b]=defaults, [b]c[/b]=continue.[/dim]"
             )
-            raw = Prompt.ask(tr("Select groups"), default="c").strip().lower()
+            raw = Prompt.ask(tr("Selecciona grupos"), default="c").strip().lower()
             if raw == "c":
                 break
             if raw == "a":
