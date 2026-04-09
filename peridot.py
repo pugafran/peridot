@@ -185,6 +185,7 @@ TRANSLATIONS = {
         "Checkbox UI no disponible:": "Checkbox UI unavailable:",
         "esta sesion no tiene un TTY interactivo real.": "this session does not have a real interactive TTY.",
         "Ejecuta Peridot directamente en una terminal interactiva.": "Run Peridot directly in an interactive terminal.",
+        "No hay un TTY interactivo; se excluyen rutas sensibles por defecto. Usa --yes para incluirlas.": "No interactive TTY detected; excluding sensitive paths by default. Use --yes to include them.",
         "falta la dependencia 'questionary' en este Python.": "the 'questionary' dependency is missing in this Python.",
         "Usa el binario instalado con './install.sh' o ejecuta 'python3 -m pip install -r requirements.txt'.": "Use the binary installed with './install.sh' or run 'python3 -m pip install -r requirements.txt'.",
         "Selecciona grupos": "Select groups",
@@ -1644,6 +1645,44 @@ def detect_sensitive_entries(entries: list[FileEntry]) -> list[FileEntry]:
     return sensitive
 
 
+def filter_sensitive_entries(
+    entries: list[FileEntry],
+    sensitive_entries: list[FileEntry],
+    args,
+    *,
+    is_tty: bool,
+) -> list[FileEntry]:
+    """Drop sensitive entries by default when we cannot prompt.
+
+    Rationale:
+        In interactive shells we can ask the user whether to include sensitive
+        paths (.netrc, private SSH keys, tokens, etc.).
+
+        In non-interactive contexts (CI, cron, pipes) prompting is not possible.
+        In that case we choose the safer default: exclude them unless the user
+        explicitly opted-in via --yes.
+    """
+
+    if not sensitive_entries:
+        return entries
+
+    if getattr(args, "yes", False):
+        return entries
+
+    preview = "\n".join(f"- {entry.relative_path}" for entry in sensitive_entries[:10])
+    console.print(Panel(preview, title=tr("Sensitive paths detected"), border_style="yellow"))
+
+    if is_tty:
+        if Confirm.ask(tr("Include these sensitive paths?"), default=False):
+            return entries
+        return [entry for entry in entries if entry not in sensitive_entries]
+
+    console.print(
+        f"[yellow]Aviso:[/yellow] {tr('No hay un TTY interactivo; se excluyen rutas sensibles por defecto. Usa --yes para incluirlas.') }"
+    )
+    return [entry for entry in entries if entry not in sensitive_entries]
+
+
 def inflate_payload(payload: bytes, compression: str | None) -> bytes:
     """Inflate a payload according to the manifest's compression metadata.
 
@@ -2292,12 +2331,7 @@ def cmd_pack(args) -> None:
     if not entries:
         die("No se encontro ningun archivo exportable.")
     sensitive_entries = detect_sensitive_entries(entries)
-    if sensitive_entries:
-        preview = "\n".join(f"- {entry.relative_path}" for entry in sensitive_entries[:10])
-        console.print(Panel(preview, title=tr("Sensitive paths detected"), border_style="yellow"))
-        if not args.yes and sys.stdin.isatty():
-            if not Confirm.ask(tr("Include these sensitive paths?"), default=False):
-                entries = [entry for entry in entries if entry not in sensitive_entries]
+    entries = filter_sensitive_entries(entries, sensitive_entries, args, is_tty=sys.stdin.isatty())
     if not entries:
         die("No quedan archivos tras aplicar exclusiones y filtros de seguridad.")
 

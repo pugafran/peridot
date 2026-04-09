@@ -136,3 +136,30 @@ def test_detect_sensitive_entries_flags_common_dotfiles(tmp_path):
     assert ".netrc" in sensitive_paths
     assert ".pypirc" in sensitive_paths
     assert "notes.txt" not in sensitive_paths
+
+
+def test_filter_sensitive_entries_excludes_by_default_without_tty(tmp_path):
+    entries = [
+        peridot.FileEntry(source=tmp_path / ".netrc", relative_path=".netrc", size=1, mode=0o600),
+        peridot.FileEntry(source=tmp_path / "notes.txt", relative_path="notes.txt", size=1, mode=0o644),
+    ]
+    sensitive = [entries[0]]
+    args = peridot.SimpleNamespace(yes=False)
+
+    filtered = peridot.filter_sensitive_entries(entries, sensitive, args, is_tty=False)
+    filtered_paths = {entry.relative_path for entry in filtered}
+    assert ".netrc" not in filtered_paths
+    assert "notes.txt" in filtered_paths
+
+
+def test_filter_sensitive_entries_keeps_when_yes_even_without_tty(tmp_path):
+    entries = [
+        peridot.FileEntry(source=tmp_path / ".netrc", relative_path=".netrc", size=1, mode=0o600),
+        peridot.FileEntry(source=tmp_path / "notes.txt", relative_path="notes.txt", size=1, mode=0o644),
+    ]
+    sensitive = [entries[0]]
+    args = peridot.SimpleNamespace(yes=True)
+
+    filtered = peridot.filter_sensitive_entries(entries, sensitive, args, is_tty=False)
+    filtered_paths = {entry.relative_path for entry in filtered}
+    assert filtered_paths == {".netrc", "notes.txt"}
