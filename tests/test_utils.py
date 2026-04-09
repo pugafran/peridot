@@ -5,6 +5,11 @@ def test_slugify_basic():
     assert peridot.slugify("Hola Mundo") == "hola-mundo"
 
 
+def test_slugify_empty_or_none():
+    assert peridot.slugify("") == "bundle"
+    assert peridot.slugify(None) == "bundle"
+
+
 def test_slugify_strips_weird_chars():
     assert peridot.slugify("  Foo / Bar!!! ") == "foo-bar"
 

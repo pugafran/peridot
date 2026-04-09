@@ -551,7 +551,11 @@ def sanitize_language(value: object) -> str:
     return DEFAULT_SETTINGS["language"]
 
 
-def slugify(value: str) -> str:
+def slugify(value: str | None) -> str:
+    # Be defensive: callers sometimes pass None/empty values when deriving a
+    # default output name.
+    value = value or ""
+
     # Normalize unicode (e.g. "Canción" -> "Cancion") to avoid generating
     # slugs with accented characters that may be awkward in filenames/URLs.
     normalized = unicodedata.normalize("NFKD", value)
