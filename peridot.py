@@ -2503,22 +2503,75 @@ class ApplyChange:
     backup_path: Path | None
 
 
+def _apply_plan_for_manifest(manifest: dict, target_root: Path) -> list[dict]:
+    plan: list[dict] = []
+    for entry in manifest["files"]:
+        path = entry["path"]
+        target_path = target_root / path
+        existed = target_path.exists()
+        plan.append(
+            {
+                "path": path,
+                "target": str(target_path),
+                "action": "overwrite" if existed else "create",
+                "existed": existed,
+                "size": int(entry.get("size") or 0),
+            }
+        )
+    return plan
+
+
+def _apply_token_for_plan(
+    *,
+    package_path: Path,
+    target_root: Path,
+    plan: list[dict],
+    ignore_platform: bool,
+    verify_write: bool,
+    transactional: bool,
+    selected_paths: list[str],
+) -> str:
+    payload = {
+        "package": str(package_path),
+        "target": str(target_root),
+        "ignore_platform": bool(ignore_platform),
+        "verify": bool(verify_write),
+        "transactional": bool(transactional),
+        "select": list(selected_paths),
+        "plan": plan,
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 def cmd_apply(args) -> None:
-    print_banner()
+    json_mode = bool(getattr(args, "json", False))
+
+    if not json_mode:
+        print_banner()
+
     manifest = manifest_from_zip(args.package)
-    render_bundle_card(manifest, args.package)
+    if not json_mode:
+        render_bundle_card(manifest, args.package)
 
     compatible, message = check_platform_compatibility(manifest)
     if not compatible and not args.ignore_platform and not args.dry_run:
         die(message)
-    if not compatible:
-        console.print(f"[yellow]{'Warning' if CURRENT_LANGUAGE == 'en' else 'Aviso'}:[/yellow] {message if CURRENT_LANGUAGE == 'es' else tr(message)}")
-    else:
-        console.print(f"[green]{message if CURRENT_LANGUAGE == 'es' else tr(message)}[/green]")
+
+    if not json_mode:
+        if not compatible:
+            console.print(
+                f"[yellow]{'Warning' if CURRENT_LANGUAGE == 'en' else 'Aviso'}:[/yellow] {message if CURRENT_LANGUAGE == 'es' else tr(message)}"
+            )
+        else:
+            console.print(f"[green]{message if CURRENT_LANGUAGE == 'es' else tr(message)}[/green]")
 
     selected_paths = set(args.select or [])
-    if not selected_paths and sys.stdin.isatty() and not args.yes and QUESTIONARY_AVAILABLE:
-        if Confirm.ask("Select only some bundle paths?" if CURRENT_LANGUAGE == "es" else "Select only some bundle paths?", default=False):
+    if not json_mode and (not selected_paths and sys.stdin.isatty() and not args.yes and QUESTIONARY_AVAILABLE):
+        if Confirm.ask(
+            "Select only some bundle paths?" if CURRENT_LANGUAGE == "es" else "Select only some bundle paths?",
+            default=False,
+        ):
             choices = [Choice(title=entry["path"], value=entry["path"], checked=True) for entry in manifest["files"]]
             chosen = checkbox_prompt("Bundle paths to apply", choices)
             if chosen is not None:
@@ -2529,33 +2582,77 @@ def cmd_apply(args) -> None:
         "files": [entry for entry in manifest["files"] if not selected_paths or entry["path"] in selected_paths],
     }
 
+    target_root = args.target.expanduser()
+    transactional = getattr(args, "transactional", True)
+    verify_write = getattr(args, "verify", True)
+
+    plan = _apply_plan_for_manifest(filtered_manifest, target_root)
+    apply_token = _apply_token_for_plan(
+        package_path=args.package,
+        target_root=target_root,
+        plan=plan,
+        ignore_platform=bool(args.ignore_platform),
+        verify_write=bool(verify_write),
+        transactional=bool(transactional),
+        selected_paths=sorted(selected_paths),
+    )
+
     if args.dry_run:
+        if json_mode:
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "dry_run": True,
+                        "compatible": bool(compatible),
+                        "compatibility_message": message,
+                        "plan": plan,
+                        "apply_token": apply_token,
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return
         render_file_table(filtered_manifest, limit=None)
-        diff_rows = bundle_diff(filtered_manifest, args.target.expanduser(), key=load_key(args.key, create=False), package_path=args.package)
+        diff_rows = bundle_diff(
+            filtered_manifest,
+            target_root,
+            key=load_key(args.key, create=False),
+            package_path=args.package,
+        )
         render_diff_table(diff_rows)
         console.print(f"[bold cyan]{tr('Dry run: no se ha escrito nada.')}[/bold cyan]")
         return
 
-    if not args.yes and sys.stdin.isatty():
+    # In JSON mode (used by MCP), require the safety token.
+    if json_mode and not str(getattr(args, "apply_token", "") or ""):
+        die("Missing --apply-token. Run apply --dry-run --json first to obtain it.")
+    if json_mode and str(args.apply_token) != apply_token:
+        die("apply token mismatch. Re-run --dry-run --json to obtain a fresh token.")
+
+    if not json_mode and not args.yes and sys.stdin.isatty():
         if not Confirm.ask(tr("Apply this bundle?"), default=False):
             console.print(f"[yellow]{tr('Operacion cancelada.')}[/yellow]")
             return
 
     key = load_key(args.key, create=False)
-    target_root = args.target.expanduser()
     backup_dir = args.backup_dir.expanduser() if args.backup_dir else None
-
-    transactional = getattr(args, "transactional", True)
-    verify_write = getattr(args, "verify", True)
 
     overwritten = 0
     restored = 0
+    rollback_performed = False
+    rollback_reason = ""
     changes: list[ApplyChange] = []
 
     def rollback(reason: str) -> None:
+        nonlocal rollback_performed, rollback_reason
+        rollback_performed = True
+        rollback_reason = reason
         if not changes:
             return
-        console.print(f"[yellow]{'Aviso' if CURRENT_LANGUAGE == 'es' else 'Warning'}:[/yellow] rollback: {reason}")
+        if not json_mode:
+            console.print(f"[yellow]{'Aviso' if CURRENT_LANGUAGE == 'es' else 'Warning'}:[/yellow] rollback: {reason}")
         # Reverse order: last write first.
         for change in reversed(changes):
             try:
@@ -2581,23 +2678,29 @@ def cmd_apply(args) -> None:
             backup_dir.mkdir(parents=True, exist_ok=True)
 
         with ZipFile(args.package) as bundle:
-            with Progress(
-                SpinnerColumn(style="green"),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(bar_width=30),
-                TextColumn("{task.fields[file_count]}/{task.fields[file_total]} files"),
-                TextColumn("{task.percentage:>3.0f}%"),
-                TimeElapsedColumn(),
-                TimeRemainingColumn(),
-                console=console,
-            ) as progress:
+            progress_ctx = None
+            progress = None
+            task = None
+            if not json_mode:
+                progress_ctx = Progress(
+                    SpinnerColumn(style="green"),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(bar_width=30),
+                    TextColumn("{task.fields[file_count]}/{task.fields[file_total]} files"),
+                    TextColumn("{task.percentage:>3.0f}%"),
+                    TimeElapsedColumn(),
+                    TimeRemainingColumn(),
+                    console=console,
+                )
+                progress = progress_ctx.__enter__()
                 task = progress.add_task(
                     "Applying",
                     total=total_bytes or len(filtered_manifest["files"]),
                     file_count=0,
                     file_total=len(filtered_manifest["files"]),
                 )
-                for file_entry in filtered_manifest["files"]:
+
+            for file_entry in filtered_manifest["files"]:
                     target_path = target_root / file_entry["path"]
                     ensure_parent(target_path)
 
@@ -2644,15 +2747,43 @@ def cmd_apply(args) -> None:
                     except OSError:
                         pass
                     restored += 1
-                    progress.update(task, advance=file_entry["size"], file_count=restored)
+                    if progress is not None and task is not None:
+                        progress.update(task, advance=file_entry["size"], file_count=restored)
 
     except Exception as exc:
         if transactional:
             rollback(f"exception: {exc}")
         raise
     finally:
+        if progress_ctx is not None:
+            progress_ctx.__exit__(None, None, None)
         if temp_backup_ctx is not None:
             temp_backup_ctx.cleanup()
+
+    post_apply = manifest["bundle"].get("post_apply") or []
+
+    if json_mode:
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "dry_run": False,
+                    "target": str(target_root),
+                    "restored": int(restored),
+                    "overwritten": int(overwritten),
+                    "backup_dir": str(backup_dir) if backup_dir else None,
+                    "transactional": bool(transactional),
+                    "verify": bool(verify_write),
+                    "rollback_performed": bool(rollback_performed),
+                    "rollback_reason": rollback_reason or None,
+                    "post_apply": list(post_apply),
+                    "apply_token": apply_token,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return
 
     footer = Table.grid(padding=(0, 2))
     footer.add_row("Target", str(target_root))
@@ -2660,7 +2791,6 @@ def cmd_apply(args) -> None:
     footer.add_row("Backups", str(overwritten if backup_dir else 0))
     if backup_dir:
         footer.add_row("Backup dir", str(backup_dir))
-    post_apply = manifest["bundle"].get("post_apply") or []
     if post_apply:
         footer.add_row("Post apply", str(len(post_apply)))
     console.print(Panel(footer, title=f"[bold bright_green]{tr('Apply Summary')}[/bold bright_green]", border_style="green"))
@@ -3344,6 +3474,8 @@ def build_parser() -> argparse.ArgumentParser:
     apply_parser.add_argument("--dry-run", action="store_true", help="Muestra lo que se haria sin escribir")
     apply_parser.add_argument("--ignore-platform", action="store_true", help="Aplica incluso si el target del bundle no coincide con la maquina actual")
     apply_parser.add_argument("--select", action="append", default=[], help="Path exacto dentro del bundle a restaurar. Repetible.")
+    apply_parser.add_argument("--json", action="store_true", help="Structured JSON output (no banner/tables)")
+    apply_parser.add_argument("--apply-token", default="", help="Safety token produced by --dry-run --json; required by MCP")
     apply_parser.add_argument("-y", "--yes", action="store_true", help="No pedir confirmacion interactiva")
     apply_parser.set_defaults(func=cmd_apply)
 
