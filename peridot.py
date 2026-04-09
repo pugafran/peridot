@@ -415,7 +415,7 @@ def detect_runtime_language() -> str:
     try:
         settings_path = DEFAULT_SETTINGS_STORE
         if settings_path.exists():
-            raw = json.loads(settings_path.read_text())
+            raw = json.loads(settings_path.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
                 return sanitize_language(raw.get("language"))
     except Exception:
@@ -822,7 +822,7 @@ def load_profiles(profile_path: Path = DEFAULT_PROFILE_STORE) -> dict:
     if not profile_path.exists():
         return {}
     try:
-        raw = json.loads(profile_path.read_text())
+        raw = json.loads(profile_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         die(f"El store de perfiles es invalido: {exc}")
     if not isinstance(raw, dict):
@@ -832,7 +832,7 @@ def load_profiles(profile_path: Path = DEFAULT_PROFILE_STORE) -> dict:
 
 def save_profiles(data: dict, profile_path: Path = DEFAULT_PROFILE_STORE) -> None:
     ensure_parent(profile_path)
-    profile_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+    profile_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def load_settings(settings_path: Path = DEFAULT_SETTINGS_STORE) -> dict:
@@ -840,7 +840,7 @@ def load_settings(settings_path: Path = DEFAULT_SETTINGS_STORE) -> dict:
     if not settings_path.exists():
         return data
     try:
-        raw = json.loads(settings_path.read_text())
+        raw = json.loads(settings_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         die(f"El store de settings es invalido: {exc}")
     if not isinstance(raw, dict):
@@ -860,7 +860,7 @@ def save_settings(data: dict, settings_path: Path = DEFAULT_SETTINGS_STORE) -> N
     merged["jobs"] = sanitize_jobs(merged.get("jobs"))
     merged.pop("encryption", None)
     merged["language"] = sanitize_language(merged.get("language"))
-    settings_path.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n")
+    settings_path.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def save_history_snapshot(package_path: Path, history_dir: Path = DEFAULT_HISTORY_DIR) -> Path | None:
