@@ -29,12 +29,25 @@ try:
     from cryptography.exceptions import InvalidTag
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 except ModuleNotFoundError:
-    print(
-        "Error: falta la dependencia 'cryptography'. "
-        "Instalala con 'python3 -m pip install .'.",
-        file=sys.stderr,
-    )
-    raise SystemExit(1)
+    InvalidTag = None  # type: ignore[assignment]
+    AESGCM = None  # type: ignore[assignment]
+
+
+def require_cryptography():
+    """Fail fast when cryptography-backed features are used.
+
+    We intentionally avoid aborting at import time so lightweight operations
+    such as --version/--help can still work in constrained environments.
+    """
+
+    if AESGCM is None:
+        print(
+            "Error: falta la dependencia 'cryptography'. "
+            "Instalala con 'python3 -m pip install .'.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    return AESGCM, InvalidTag
 
 try:
     import zstandard as zstd
@@ -973,7 +986,8 @@ def load_key(key_path: Path, create: bool = False) -> bytes:
         die(f"Clave invalida en {key_path}: se esperaban 32 bytes para AES-GCM.")
     if not create:
         die(f"No se encontro la clave en {key_path}")
-    key = AESGCM.generate_key(bit_length=256)
+    AESGCM_impl, _InvalidTag = require_cryptography()
+    key = AESGCM_impl.generate_key(bit_length=256)
     write_key(key_path, key)
     return key
 
@@ -1633,7 +1647,8 @@ def build_payload_record(
 ) -> tuple[bytes, dict]:
     compression, payload = choose_compression(raw, relative_path, compression_level)
     nonce = os.urandom(12)
-    encrypted = AESGCM(key).encrypt(nonce, payload, None)
+    AESGCM_impl, _InvalidTag = require_cryptography()
+    encrypted = AESGCM_impl(key).encrypt(nonce, payload, None)
     encryption_meta = {"algorithm": ENCRYPTION_ALGORITHM, "nonce": nonce.hex()}
     record = {
         "path": relative_path,
@@ -1773,11 +1788,13 @@ def decrypt_payload(encrypted: bytes, file_entry: dict, key: bytes) -> bytes:
     nonce_hex = encryption_meta.get("nonce")
     if not nonce_hex:
         die(f"Falta nonce para {file_entry.get('path')}")
+    AESGCM_impl, InvalidTag_impl = require_cryptography()
     try:
-        return AESGCM(key).decrypt(bytes.fromhex(nonce_hex), encrypted, None)
-    except InvalidTag:
-        raise ValueError("invalid key")
+        return AESGCM_impl(key).decrypt(bytes.fromhex(nonce_hex), encrypted, None)
     except Exception as exc:
+        # cryptography raises InvalidTag on auth failure.
+        if InvalidTag_impl is not None and isinstance(exc, InvalidTag_impl):
+            raise ValueError("invalid key")
         die(f"No se pudo descifrar {file_entry.get('path')}: {exc}")
 
 
@@ -3433,7 +3450,8 @@ def reencrypt_package(package_path: Path, old_key: bytes, new_key: bytes) -> Non
                 encrypted = source_zip.read(file_entry["payload"])
                 payload = decrypt_payload(encrypted, file_entry, old_key)
                 nonce = os.urandom(12)
-                reencrypted = AESGCM(new_key).encrypt(nonce, payload, None)
+                AESGCM_impl, _InvalidTag = require_cryptography()
+                reencrypted = AESGCM_impl(new_key).encrypt(nonce, payload, None)
                 file_entry["encryption"] = {"algorithm": ENCRYPTION_ALGORITHM, "nonce": nonce.hex()}
                 target_zip.writestr(file_entry["payload"], reencrypted)
             target_zip.writestr("manifest.json", json.dumps(manifest, indent=2, sort_keys=True) + "\n", compress_type=ZIP_DEFLATED)
@@ -3463,7 +3481,8 @@ def cmd_rekey(args) -> None:
         die("No hay paquetes para migrar. Pasa paquetes o usa --all-local.")
 
     old_key = load_key(args.key, create=False)
-    new_key = AESGCM.generate_key(bit_length=256)
+    AESGCM_impl, _InvalidTag = require_cryptography()
+    new_key = AESGCM_impl.generate_key(bit_length=256)
     backup_key_path = args.key.with_suffix(args.key.suffix + ".bak")
 
     if not args.yes and sys.stdin.isatty():
