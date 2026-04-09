@@ -74,6 +74,38 @@ def test_should_exclude_entry_filters_common_basenames_outside_home(tmp_path):
     assert peridot.should_exclude_entry(tmp_path / ".cache" / "foo.txt") is True
     assert peridot.should_exclude_entry(tmp_path / "regular" / "file.txt") is False
 
+<<<<<<< HEAD
+=======
+
+def test_collect_files_prunes_excluded_directories(monkeypatch, tmp_path):
+    # Arrange a small tree where a directory should be excluded by basename.
+    (tmp_path / ".cache").mkdir()
+    (tmp_path / ".cache" / "secret.txt").write_text("nope")
+    (tmp_path / "keep").mkdir()
+    (tmp_path / "keep" / "ok.txt").write_text("ok")
+
+    # Spy os.walk to ensure "dirs" is mutated in-place to drop excluded dirs.
+    def fake_walk(start):
+        assert peridot.Path(start) == tmp_path
+        dirs = [".cache", "keep"]
+        yield (str(tmp_path), dirs, [])
+
+        # After the first yield, collect_files may have pruned dirs.
+        if ".cache" in dirs:
+            yield (str(tmp_path / ".cache"), [], ["secret.txt"])
+        if "keep" in dirs:
+            yield (str(tmp_path / "keep"), [], ["ok.txt"])
+
+    monkeypatch.setattr(peridot.os, "walk", fake_walk)
+
+    # Act
+    entries = peridot.collect_files([tmp_path])
+
+    # Assert: only the non-excluded file is collected.
+    rels = {entry.relative_path.replace('\\', '/') for entry in entries}
+    assert any(p.endswith("/keep/ok.txt") for p in rels)
+    assert not any(p.endswith("/.cache/secret.txt") for p in rels)
+
 def test_load_profiles_rejects_non_dict(tmp_path):
     profiles_path = tmp_path / "profiles.json"
     profiles_path.write_text("[]\n")

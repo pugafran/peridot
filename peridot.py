@@ -1477,8 +1477,17 @@ def collect_files(
                     progress_callback(discovered, expanded)
             continue
 
-        for root, _, files in os.walk(expanded):
+        for root, dirs, files in os.walk(expanded):
             root_path = Path(root)
+
+            # Prune excluded directories early to avoid unnecessary traversal.
+            # os.walk() honors in-place mutations of "dirs".
+            dirs[:] = [
+                d
+                for d in dirs
+                if not (root_path / d).is_symlink() and not should_exclude_entry(root_path / d)
+            ]
+
             for name in files:
                 file_path = root_path / name
                 if file_path.is_symlink():
