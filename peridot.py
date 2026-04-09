@@ -232,6 +232,10 @@ TRANSLATIONS = {
         "Compatibility": "Compatibility",
         "Scanning files": "Scanning files",
         "Scanning files done": "Scanning files done",
+        # Canonical (es) keys
+        "Rutas sensibles detectadas": "Sensitive paths detected",
+        "Incluir estas rutas sensibles?": "Include these sensitive paths?",
+        # Backwards-compat (old en keys)
         "Sensitive paths detected": "Sensitive paths detected",
         "Include these sensitive paths?": "Include these sensitive paths?",
         "Adaptive pack:": "Adaptive pack:",
@@ -1670,10 +1674,10 @@ def filter_sensitive_entries(
         return entries
 
     preview = "\n".join(f"- {entry.relative_path}" for entry in sensitive_entries[:10])
-    console.print(Panel(preview, title=tr("Sensitive paths detected"), border_style="yellow"))
+    console.print(Panel(preview, title=tr("Rutas sensibles detectadas"), border_style="yellow"))
 
     if is_tty:
-        if Confirm.ask(tr("Include these sensitive paths?"), default=False):
+        if Confirm.ask(tr("Incluir estas rutas sensibles?"), default=False):
             return entries
         return [entry for entry in entries if entry not in sensitive_entries]
 
