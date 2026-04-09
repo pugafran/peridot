@@ -242,7 +242,7 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="peridot_apply",
-        description="Apply a bundle. Requires explicit confirmation.",
+        description="Apply a bundle. Requires explicit confirmation and an apply_token from dry-run.",
         input_schema={
             "type": "object",
             "properties": {
@@ -251,6 +251,7 @@ TOOLS: list[Tool] = [
                 "backup_dir": {"type": "string"},
                 "ignore_platform": {"type": "boolean", "default": False},
                 "select": {"type": "array", "items": {"type": "string"}},
+                "apply_token": {"type": "string"},
                 "confirm": {"type": "boolean", "default": False},
             },
             "required": ["package"],
@@ -322,9 +323,13 @@ def _handle_tools_call(params: JSON) -> JSON:
         payload = _tool_peridot_init(force=bool(arguments.get("force", False)))
 
     elif name == "peridot_pack":
-        argv = ["pack", "--json"]
+        # NOTE: argparse in Peridot expects pack paths before optional flags.
+        argv = ["pack"]
         if arguments.get("name"):
             argv.append(str(arguments["name"]))
+        for p in arguments.get("paths") or []:
+            argv.append(str(p))
+        argv.append("--json")
         if arguments.get("preset"):
             argv.extend(["--preset", str(arguments["preset"])])
         if arguments.get("output"):
@@ -345,8 +350,6 @@ def _handle_tools_call(params: JSON) -> JSON:
             argv.extend(["--jobs", str(int(arguments["jobs"]))])
         if arguments.get("yes", True):
             argv.append("--yes")
-        for p in arguments.get("paths") or []:
-            argv.append(str(p))
         payload = _tool_run_cli(argv)
 
     elif name == "peridot_inspect":
@@ -391,7 +394,7 @@ def _handle_tools_call(params: JSON) -> JSON:
         payload = _tool_run_cli(argv)
 
     elif name == "peridot_apply_dry_run":
-        argv = ["apply", str(arguments["package"]), "--dry-run"]
+        argv = ["apply", str(arguments["package"]), "--dry-run", "--json"]
         if arguments.get("target"):
             argv.extend(["--target", str(arguments["target"])])
         if arguments.get("ignore_platform", False):
@@ -408,8 +411,20 @@ def _handle_tools_call(params: JSON) -> JSON:
                 "exitCode": 1,
                 "error": "Refusing to apply without confirm=true. Use peridot_apply_dry_run first.",
             }
+        elif not str(arguments.get("apply_token") or ""):
+            payload = {
+                "ok": False,
+                "exitCode": 1,
+                "error": "Missing apply_token. Call peridot_apply_dry_run and pass its apply_token.",
+            }
         else:
-            argv = ["apply", str(arguments["package"])]
+            argv = [
+                "apply",
+                str(arguments["package"]),
+                "--json",
+                "--apply-token",
+                str(arguments.get("apply_token")),
+            ]
             if arguments.get("target"):
                 argv.extend(["--target", str(arguments["target"])])
             if arguments.get("backup_dir"):
