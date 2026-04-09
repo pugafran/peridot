@@ -47,6 +47,14 @@ def test_decode_aesgcm_key_bytes_accepts_unpadded_base64url():
     assert peridot.decode_aesgcm_key_bytes(encoded) == raw_key
 
 
+def test_decode_aesgcm_key_bytes_accepts_standard_base64():
+    # Standard base64 can contain '+' and '/' (vs base64url '-','_').
+    raw_key = bytes([255, 254, 253, 252] + list(range(28)))
+    encoded = peridot.base64.b64encode(raw_key).rstrip(b"=")
+    assert b"+" in encoded or b"/" in encoded
+    assert peridot.decode_aesgcm_key_bytes(encoded) == raw_key
+
+
 def test_decode_aesgcm_key_bytes_accepts_string_and_whitespace():
     raw_key = bytes(range(32))
     encoded = peridot.base64.urlsafe_b64encode(raw_key).rstrip(b"=").decode("ascii")

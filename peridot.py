@@ -889,12 +889,22 @@ def decode_aesgcm_key_bytes(raw: bytes | str) -> bytes | None:
     if missing_padding:
         cleaned += b"=" * missing_padding
 
+    decoded: bytes | None
+
     try:
         decoded = base64.urlsafe_b64decode(cleaned)
     except Exception:
-        return None
+        decoded = None
 
-    return decoded if len(decoded) == 32 else None
+    if decoded is None or len(decoded) != 32:
+        # Also accept standard base64 (with '+' and '/') because keys are often
+        # copy/pasted from tools that do not use base64url.
+        try:
+            decoded = base64.b64decode(cleaned)
+        except Exception:
+            decoded = None
+
+    return decoded if decoded is not None and len(decoded) == 32 else None
 
 
 def load_key(key_path: Path, create: bool = False) -> bytes:
