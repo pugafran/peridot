@@ -2541,11 +2541,41 @@ def cmd_inspect(args) -> None:
 
 
 def backup_existing_file(source: Path, backup_dir: Path, home_target: Path) -> Path:
+    """Back up an existing path inside the apply target.
+
+    Notes:
+    - We intentionally preserve symlinks (store them as symlinks in the backup dir)
+      to avoid silently dereferencing them.
+    """
+
     relative = source.relative_to(home_target)
     backup_path = backup_dir / relative
     ensure_parent(backup_path)
+
+    if source.is_symlink():
+        # Preserve the symlink itself, not the content of its target.
+        link_target = os.readlink(source)
+        if backup_path.exists() or backup_path.is_symlink():
+            backup_path.unlink()
+        os.symlink(link_target, backup_path)
+        return backup_path
+
     shutil.copy2(source, backup_path)
     return backup_path
+
+
+def restore_backup(backup_path: Path, target_path: Path) -> None:
+    """Restore a backup created by backup_existing_file back to target_path."""
+    ensure_parent(target_path)
+
+    if backup_path.is_symlink():
+        link_target = os.readlink(backup_path)
+        if target_path.exists() or target_path.is_symlink():
+            target_path.unlink()
+        os.symlink(link_target, target_path)
+        return
+
+    shutil.copy2(backup_path, target_path)
 
 
 @dataclass
@@ -2709,8 +2739,7 @@ def cmd_apply(args) -> None:
         for change in reversed(changes):
             try:
                 if change.existed and change.backup_path and change.backup_path.exists():
-                    ensure_parent(change.target_path)
-                    shutil.copy2(change.backup_path, change.target_path)
+                    restore_backup(change.backup_path, change.target_path)
                 elif not change.existed:
                     if change.target_path.exists():
                         change.target_path.unlink()
@@ -2764,6 +2793,10 @@ def cmd_apply(args) -> None:
 
                     # Track this change so we can rollback on failure.
                     changes.append(ApplyChange(target_path=target_path, existed=existed, backup_path=backup_path))
+
+                    # Safety: never write through a pre-existing symlink (would clobber its target).
+                    if existed and target_path.is_symlink():
+                        target_path.unlink()
 
                     try:
                         encrypted = bundle.read(file_entry["payload"])
