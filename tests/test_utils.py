@@ -9,6 +9,10 @@ def test_slugify_strips_weird_chars():
     assert peridot.slugify("  Foo / Bar!!! ") == "foo-bar"
 
 
+def test_slugify_normalizes_accents():
+    assert peridot.slugify("Canción") == "cancion"
+
+
 def test_format_bytes():
     assert peridot.format_bytes(0) == "0 B"
     assert peridot.format_bytes(1024) == "1.0 KB"
@@ -60,6 +64,7 @@ def test_decode_aesgcm_key_bytes_accepts_string_and_whitespace():
     encoded = peridot.base64.urlsafe_b64encode(raw_key).rstrip(b"=").decode("ascii")
     encoded_wrapped = f"\n  {encoded[:10]}\n{encoded[10:]}  \n"
     assert peridot.decode_aesgcm_key_bytes(encoded_wrapped) == raw_key
+
 
 
 def test_decode_aesgcm_key_bytes_accepts_hex():

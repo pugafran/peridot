@@ -16,6 +16,7 @@ import socket
 import stat
 import subprocess
 import sys
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
@@ -551,8 +552,13 @@ def sanitize_language(value: object) -> str:
 
 
 def slugify(value: str) -> str:
-    cleaned = []
-    for char in value.lower():
+    # Normalize unicode (e.g. "Canción" -> "Cancion") to avoid generating
+    # slugs with accented characters that may be awkward in filenames/URLs.
+    normalized = unicodedata.normalize("NFKD", value)
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
+    cleaned: list[str] = []
+    for char in normalized.lower():
         if char.isalnum():
             cleaned.append(char)
         elif char in {" ", "-", "_", "."}:
