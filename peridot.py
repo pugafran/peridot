@@ -95,6 +95,8 @@ SENSITIVE_PATTERNS = (
     "token",
     ".env",
     ".npmrc",
+    ".netrc",
+    ".pypirc",
 )
 
 DEFAULT_SETTINGS = {

@@ -75,3 +75,17 @@ def test_load_profiles_rejects_non_dict(tmp_path):
         assert exc.code == 1
     else:
         raise AssertionError("expected SystemExit")
+
+
+def test_detect_sensitive_entries_flags_common_dotfiles(tmp_path):
+    entries = [
+        peridot.FileEntry(source=tmp_path / ".netrc", relative_path=".netrc", size=1, mode=0o600),
+        peridot.FileEntry(source=tmp_path / ".pypirc", relative_path=".pypirc", size=1, mode=0o600),
+        peridot.FileEntry(source=tmp_path / "notes.txt", relative_path="notes.txt", size=1, mode=0o644),
+    ]
+
+    sensitive = peridot.detect_sensitive_entries(entries)
+    sensitive_paths = {entry.relative_path for entry in sensitive}
+    assert ".netrc" in sensitive_paths
+    assert ".pypirc" in sensitive_paths
+    assert "notes.txt" not in sensitive_paths
