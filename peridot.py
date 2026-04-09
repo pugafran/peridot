@@ -16,9 +16,10 @@ import socket
 import stat
 import subprocess
 import sys
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from typing import Callable, Iterable
@@ -95,6 +96,8 @@ SENSITIVE_PATTERNS = (
     "token",
     ".env",
     ".npmrc",
+    ".netrc",
+    ".pypirc",
 )
 
 DEFAULT_SETTINGS = {
@@ -183,9 +186,10 @@ TRANSLATIONS = {
         "Checkbox UI no disponible:": "Checkbox UI unavailable:",
         "esta sesion no tiene un TTY interactivo real.": "this session does not have a real interactive TTY.",
         "Ejecuta Peridot directamente en una terminal interactiva.": "Run Peridot directly in an interactive terminal.",
+        "No hay un TTY interactivo; se excluyen rutas sensibles por defecto. Usa --yes para incluirlas.": "No interactive TTY detected; excluding sensitive paths by default. Use --yes to include them.",
         "falta la dependencia 'questionary' en este Python.": "the 'questionary' dependency is missing in this Python.",
         "Usa el binario instalado con './install.sh' o ejecuta 'python3 -m pip install -r requirements.txt'.": "Use the binary installed with './install.sh' or run 'python3 -m pip install -r requirements.txt'.",
-        "Select groups": "Select groups",
+        "Selecciona grupos": "Select groups",
         "Selecciona rutas": "Select paths",
         "Selecciona rutas para este bundle": "Select paths for this bundle",
         "Selecciona grupos de configuracion": "Select config groups",
@@ -229,6 +233,10 @@ TRANSLATIONS = {
         "Compatibility": "Compatibility",
         "Scanning files": "Scanning files",
         "Scanning files done": "Scanning files done",
+        # Canonical (es) keys
+        "Rutas sensibles detectadas": "Sensitive paths detected",
+        "Incluir estas rutas sensibles?": "Include these sensitive paths?",
+        # Backwards-compat (old en keys)
         "Sensitive paths detected": "Sensitive paths detected",
         "Include these sensitive paths?": "Include these sensitive paths?",
         "Adaptive pack:": "Adaptive pack:",
@@ -306,6 +314,7 @@ TRANSLATIONS = {
         "Lanza el command center visual": "Launch the visual command center",
         "Alias de pack": "Alias for pack",
         "Alias de apply": "Alias for apply",
+        "Muestra la version y sale": "Show the version and exit",
         "Ruta de la clave AES-GCM (por defecto: {path})": "AES-GCM key path (default: {path})",
     }
 }
@@ -543,8 +552,13 @@ def sanitize_language(value: object) -> str:
 
 
 def slugify(value: str) -> str:
-    cleaned = []
-    for char in value.lower():
+    # Normalize unicode (e.g. "Canción" -> "Cancion") to avoid generating
+    # slugs with accented characters that may be awkward in filenames/URLs.
+    normalized = unicodedata.normalize("NFKD", value)
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
+    cleaned: list[str] = []
+    for char in normalized.lower():
         if char.isalnum():
             cleaned.append(char)
         elif char in {" ", "-", "_", "."}:
@@ -745,6 +759,9 @@ def detect_shell() -> str:
         On Windows, COMSPEC often points to cmd.exe even when running inside
         PowerShell/Windows Terminal. We prefer detecting PowerShell via the
         presence of the PSModulePath env var.
+
+        When no shell can be detected, we return "unknown" (instead of an empty
+        string) so downstream code can branch on an explicit sentinel.
     """
 
     # Windows: PowerShell sets PSModulePath.
@@ -752,7 +769,17 @@ def detect_shell() -> str:
         return "powershell"
 
     shell = os.environ.get("SHELL") or os.environ.get("COMSPEC") or ""
-    name = Path(shell).name.lower()
+    shell = shell.strip().strip('"').strip("'")
+    if not shell.strip():
+        return "unknown"
+
+    # When running tests on POSIX, Windows paths with backslashes would be
+    # treated as a single filename by pathlib.Path. Detect those cases and
+    # parse them as Windows paths explicitly.
+    if "\\" in shell or (":" in shell and "/" not in shell):
+        name = PureWindowsPath(shell).name.lower()
+    else:
+        name = Path(shell).name.lower()
 
     # Normalize common Windows variants.
     if name in {"pwsh", "pwsh.exe", "powershell", "powershell.exe"}:
@@ -760,7 +787,7 @@ def detect_shell() -> str:
     if name in {"cmd", "cmd.exe"}:
         return "cmd"
 
-    return name
+    return name or "unknown"
 
 
 def ensure_parent(path: Path) -> None:
@@ -859,7 +886,11 @@ def decode_aesgcm_key_bytes(raw: bytes | str) -> bytes | None:
     if not cleaned:
         return None
 
-    # Accept 64-hex-char keys (common when keys are copy/pasted from CLIs).
+    # Accept hex-encoded keys (common when copy/pasting from CLIs).
+    # Also accept an optional "0x" prefix.
+    if cleaned[:2].lower() == b"0x":
+        cleaned = cleaned[2:]
+
     if len(cleaned) == 64:
         try:
             decoded_hex = bytes.fromhex(cleaned.decode("ascii"))
@@ -873,12 +904,22 @@ def decode_aesgcm_key_bytes(raw: bytes | str) -> bytes | None:
     if missing_padding:
         cleaned += b"=" * missing_padding
 
+    decoded: bytes | None
+
     try:
         decoded = base64.urlsafe_b64decode(cleaned)
     except Exception:
-        return None
+        decoded = None
 
-    return decoded if len(decoded) == 32 else None
+    if decoded is None or len(decoded) != 32:
+        # Also accept standard base64 (with '+' and '/') because keys are often
+        # copy/pasted from tools that do not use base64url.
+        try:
+            decoded = base64.b64decode(cleaned)
+        except Exception:
+            decoded = None
+
+    return decoded if decoded is not None and len(decoded) == 32 else None
 
 
 def load_key(key_path: Path, create: bool = False) -> bytes:
@@ -1321,7 +1362,7 @@ def interactive_select_config_groups(os_name: str, shell_name: str) -> list[Path
             console.print(
                 "[dim]Toggle with numbers like '1 4 7'. Commands: [b]a[/b]=all, [b]n[/b]=none, [b]d[/b]=defaults, [b]c[/b]=continue.[/dim]"
             )
-            raw = Prompt.ask(tr("Select groups"), default="c").strip().lower()
+            raw = Prompt.ask(tr("Selecciona grupos"), default="c").strip().lower()
             if raw == "c":
                 break
             if raw == "a":
@@ -1451,8 +1492,17 @@ def collect_files(
                     progress_callback(discovered, expanded)
             continue
 
-        for root, _, files in os.walk(expanded):
+        for root, dirs, files in os.walk(expanded):
             root_path = Path(root)
+
+            # Prune excluded directories early to avoid unnecessary traversal.
+            # os.walk() honors in-place mutations of "dirs".
+            dirs[:] = [
+                d
+                for d in dirs
+                if not (root_path / d).is_symlink() and not should_exclude_entry(root_path / d)
+            ]
+
             for name in files:
                 file_path = root_path / name
                 if file_path.is_symlink():
@@ -1562,14 +1612,85 @@ def build_payload_record(
     return encrypted, record
 
 
+def _is_sensitive_path(name: str, path_str: str) -> bool:
+    """Heuristic detection of sensitive files.
+
+    We intentionally avoid naive substring matching for generic tokens (e.g. "token"),
+    because that creates noisy false positives (e.g. "stockton").
+
+    Args:
+        name: Basename (lowercased).
+        path_str: Relative path (lowercased, posix-style).
+    """
+
+    # Exact dotfiles / well-known filenames.
+    exact_names = {".env", ".npmrc", ".netrc", ".pypirc", "known_hosts"}
+    if name in exact_names:
+        return True
+
+    # SSH private keys and similar.
+    key_prefixes = {"id_rsa", "id_ed25519", "id_ecdsa"}
+    if any(name == prefix or name.startswith(f"{prefix}.") for prefix in key_prefixes):
+        return True
+
+    # Generic tokens: match as a path segment or separated word, not a substring.
+    # Accept separators: / . _ - (and Windows \ just in case).
+    import re
+
+    for token in ("credentials", "token"):
+        pattern = rf"(^|[\\/._-]){re.escape(token)}([\\/._-]|$)"
+        if re.search(pattern, name) or re.search(pattern, path_str):
+            return True
+
+    return False
+
+
 def detect_sensitive_entries(entries: list[FileEntry]) -> list[FileEntry]:
     sensitive: list[FileEntry] = []
     for entry in entries:
         name = entry.source.name.lower()
         path_str = entry.relative_path.lower()
-        if any(pattern in name or pattern in path_str for pattern in SENSITIVE_PATTERNS):
+        if _is_sensitive_path(name, path_str):
             sensitive.append(entry)
     return sensitive
+
+
+def filter_sensitive_entries(
+    entries: list[FileEntry],
+    sensitive_entries: list[FileEntry],
+    args,
+    *,
+    is_tty: bool,
+) -> list[FileEntry]:
+    """Drop sensitive entries by default when we cannot prompt.
+
+    Rationale:
+        In interactive shells we can ask the user whether to include sensitive
+        paths (.netrc, private SSH keys, tokens, etc.).
+
+        In non-interactive contexts (CI, cron, pipes) prompting is not possible.
+        In that case we choose the safer default: exclude them unless the user
+        explicitly opted-in via --yes.
+    """
+
+    if not sensitive_entries:
+        return entries
+
+    if getattr(args, "yes", False):
+        return entries
+
+    preview = "\n".join(f"- {entry.relative_path}" for entry in sensitive_entries[:10])
+    console.print(Panel(preview, title=tr("Rutas sensibles detectadas"), border_style="yellow"))
+
+    if is_tty:
+        if Confirm.ask(tr("Incluir estas rutas sensibles?"), default=False):
+            return entries
+        return [entry for entry in entries if entry not in sensitive_entries]
+
+    console.print(
+        f"[yellow]Aviso:[/yellow] {tr('No hay un TTY interactivo; se excluyen rutas sensibles por defecto. Usa --yes para incluirlas.') }"
+    )
+    return [entry for entry in entries if entry not in sensitive_entries]
 
 
 def inflate_payload(payload: bytes, compression: str | None) -> bytes:
@@ -2220,12 +2341,7 @@ def cmd_pack(args) -> None:
     if not entries:
         die("No se encontro ningun archivo exportable.")
     sensitive_entries = detect_sensitive_entries(entries)
-    if sensitive_entries:
-        preview = "\n".join(f"- {entry.relative_path}" for entry in sensitive_entries[:10])
-        console.print(Panel(preview, title=tr("Sensitive paths detected"), border_style="yellow"))
-        if not args.yes and sys.stdin.isatty():
-            if not Confirm.ask(tr("Include these sensitive paths?"), default=False):
-                entries = [entry for entry in entries if entry not in sensitive_entries]
+    entries = filter_sensitive_entries(entries, sensitive_entries, args, is_tty=sys.stdin.isatty())
     if not entries:
         die("No quedan archivos tras aplicar exclusiones y filtros de seguridad.")
 
@@ -2534,11 +2650,41 @@ def cmd_inspect(args) -> None:
 
 
 def backup_existing_file(source: Path, backup_dir: Path, home_target: Path) -> Path:
+    """Back up an existing path inside the apply target.
+
+    Notes:
+    - We intentionally preserve symlinks (store them as symlinks in the backup dir)
+      to avoid silently dereferencing them.
+    """
+
     relative = source.relative_to(home_target)
     backup_path = backup_dir / relative
     ensure_parent(backup_path)
+
+    if source.is_symlink():
+        # Preserve the symlink itself, not the content of its target.
+        link_target = os.readlink(source)
+        if backup_path.exists() or backup_path.is_symlink():
+            backup_path.unlink()
+        os.symlink(link_target, backup_path)
+        return backup_path
+
     shutil.copy2(source, backup_path)
     return backup_path
+
+
+def restore_backup(backup_path: Path, target_path: Path) -> None:
+    """Restore a backup created by backup_existing_file back to target_path."""
+    ensure_parent(target_path)
+
+    if backup_path.is_symlink():
+        link_target = os.readlink(backup_path)
+        if target_path.exists() or target_path.is_symlink():
+            target_path.unlink()
+        os.symlink(link_target, target_path)
+        return
+
+    shutil.copy2(backup_path, target_path)
 
 
 @dataclass
@@ -2702,8 +2848,7 @@ def cmd_apply(args) -> None:
         for change in reversed(changes):
             try:
                 if change.existed and change.backup_path and change.backup_path.exists():
-                    ensure_parent(change.target_path)
-                    shutil.copy2(change.backup_path, change.target_path)
+                    restore_backup(change.backup_path, change.target_path)
                 elif not change.existed:
                     if change.target_path.exists():
                         change.target_path.unlink()
@@ -2757,6 +2902,10 @@ def cmd_apply(args) -> None:
 
                     # Track this change so we can rollback on failure.
                     changes.append(ApplyChange(target_path=target_path, existed=existed, backup_path=backup_path))
+
+                    # Safety: never write through a pre-existing symlink (would clobber its target).
+                    if existed and target_path.is_symlink():
+                        target_path.unlink()
 
                     try:
                         encrypted = bundle.read(file_entry["payload"])
