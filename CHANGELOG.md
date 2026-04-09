@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.4 - 2026-04-09
+
+- pack: skip unreadable/protected files instead of crashing (e.g. `~/.ssh/config` on Windows); record skipped files in manifest and expose `skipped` in `pack --json`.
+- ui: improve output when no local `.peridot` bundles are found (avoid truncated table row).
+
 ## 0.4.3 - 2026-04-09
 
 - MCP: add `peridot-mcp` server and expand tools coverage.
