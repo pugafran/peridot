@@ -6,7 +6,13 @@
 
 Versión actual: `0.4.2` (ver `CHANGELOG.md`).
 
-Peridot es un CLI para crear **bundles portables de configuración** (`.peridot`) con una UX cuidada:
+Peridot es un CLI para crear **bundles portables de configuración** (`.peridot`) con una UX cuidada.
+
+Además, incluye un **servidor MCP (Model Context Protocol)** para que una IA pueda usar Peridot mediante *tools* (sin que el usuario aprenda el CLI): `peridot-mcp`.
+
+- Docs MCP: `mcp/README_MCP.md`
+
+Peridot CLI:
 
 - `pack`: empaqueta dotfiles/carpetas de config en un bundle cifrado
 - `inspect`/`manifest`: inspecciona qué hay dentro antes de aplicar
