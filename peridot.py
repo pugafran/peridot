@@ -306,6 +306,7 @@ TRANSLATIONS = {
         "Lanza el command center visual": "Launch the visual command center",
         "Alias de pack": "Alias for pack",
         "Alias de apply": "Alias for apply",
+        "Muestra la version y sale": "Show the version and exit",
         "Ruta de la clave AES-GCM (por defecto: {path})": "AES-GCM key path (default: {path})",
     }
 }
