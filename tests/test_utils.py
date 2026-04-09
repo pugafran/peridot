@@ -81,8 +81,6 @@ def test_should_exclude_entry_filters_common_basenames_outside_home(tmp_path):
     assert peridot.should_exclude_entry(tmp_path / ".cache" / "foo.txt") is True
     assert peridot.should_exclude_entry(tmp_path / "regular" / "file.txt") is False
 
-<<<<<<< HEAD
-=======
 
 def test_collect_files_prunes_excluded_directories(monkeypatch, tmp_path):
     # Arrange a small tree where a directory should be excluded by basename.
