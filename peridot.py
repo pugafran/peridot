@@ -551,7 +551,15 @@ def sanitize_language(value: object) -> str:
     return DEFAULT_SETTINGS["language"]
 
 
-def slugify(value: str | None) -> str:
+def slugify(value: str | None, max_length: int = 64) -> str:
+    """Turn an arbitrary string into a filesystem-friendly slug.
+
+    Args:
+        value: Source string.
+        max_length: Best-effort cap for the slug length. This helps keep
+            default output filenames reasonably short across platforms.
+    """
+
     # Be defensive: callers sometimes pass None/empty values when deriving a
     # default output name.
     value = value or ""
@@ -576,6 +584,10 @@ def slugify(value: str | None) -> str:
             last_was_sep = True
 
     slug = "".join(cleaned).strip("-")
+
+    if max_length and len(slug) > max_length:
+        slug = slug[:max_length].rstrip("-")
+
     return slug or "bundle"
 
 

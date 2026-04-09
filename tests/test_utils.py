@@ -24,6 +24,15 @@ def test_slugify_treats_common_symbols_as_separators():
     assert peridot.slugify("foo.bar") == "foo-bar"
 
 
+def test_slugify_truncates_long_inputs_safely():
+    raw = "a" * 200
+    assert peridot.slugify(raw) == ("a" * 64)
+
+    # Truncation should not leave trailing separators.
+    raw = ("ab-" * 100)  # produces a long slug with dashes
+    assert not peridot.slugify(raw).endswith("-")
+
+
 def test_format_bytes():
     assert peridot.format_bytes(0) == "0 B"
     assert peridot.format_bytes(1024) == "1.0 KB"
