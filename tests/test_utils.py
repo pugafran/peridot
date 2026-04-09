@@ -69,6 +69,13 @@ def test_decode_aesgcm_key_bytes_accepts_hex():
     assert peridot.decode_aesgcm_key_bytes(f"\n {hex_key[:20]}\n{hex_key[20:]} \n") == raw_key
 
 
+def test_decode_aesgcm_key_bytes_accepts_hex_with_0x_prefix():
+    raw_key = bytes(range(32))
+    hex_key = raw_key.hex()
+    assert peridot.decode_aesgcm_key_bytes(f"0x{hex_key}") == raw_key
+    assert peridot.decode_aesgcm_key_bytes(f"\n 0x{hex_key[:30]}\n{hex_key[30:]} \n") == raw_key
+
+
 def test_should_exclude_entry_filters_common_basenames_outside_home(tmp_path):
     assert peridot.should_exclude_entry(tmp_path / ".DS_Store") is True
     assert peridot.should_exclude_entry(tmp_path / ".cache" / "foo.txt") is True

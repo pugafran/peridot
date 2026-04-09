@@ -875,7 +875,11 @@ def decode_aesgcm_key_bytes(raw: bytes | str) -> bytes | None:
     if not cleaned:
         return None
 
-    # Accept 64-hex-char keys (common when keys are copy/pasted from CLIs).
+    # Accept hex-encoded keys (common when copy/pasting from CLIs).
+    # Also accept an optional "0x" prefix.
+    if cleaned[:2].lower() == b"0x":
+        cleaned = cleaned[2:]
+
     if len(cleaned) == 64:
         try:
             decoded_hex = bytes.fromhex(cleaned.decode("ascii"))
