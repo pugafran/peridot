@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.3 - 2026-04-09
+
+- MCP: add `peridot-mcp` server and expand tools coverage.
+- MCP/CLI: JSON-only outputs for machine consumption (`pack/inspect/diff/verify/bench`).
+- Apply: two-phase safety with `apply_token` (`apply --dry-run --json` → token; `apply --json` validates `--apply-token`).
+- Apply: hardening (avoid writing through existing symlinks; preserve symlinks in backups/rollback).
+- Security: mark `.netrc` and `.pypirc` as sensitive.
+- Windows: improve shell detection for COMSPEC backslash paths.
+
 ## 0.4.2 - 2026-04-08
 
 - Windows: include both PowerShell 7+ (Documents/PowerShell) and Windows PowerShell legacy (Documents/WindowsPowerShell) profile paths (including OneDrive variants).
