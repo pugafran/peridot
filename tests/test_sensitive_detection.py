@@ -18,6 +18,8 @@ def test_detect_sensitive_entries_flags_common_secret_files() -> None:
         _entry("authorized_keys", ".ssh/authorized_keys"),
         _entry("config", ".ssh/config"),
         _entry("config", ".ssh\\config"),
+        _entry("config", ".aws/config"),
+        _entry("credentials", ".aws/credentials"),
         _entry("my_token.txt", "secrets/my_token.txt"),
         _entry("config.json", "token/config.json"),
         _entry("creds", "credentials.json"),

@@ -1806,7 +1806,12 @@ def _is_sensitive_path(name: str, path_str: str) -> bool:
     # Treat it as sensitive but avoid flagging generic "config" files elsewhere.
     # Normalize separators so Windows-style paths are covered as well.
     path_norm = path_str.replace("\\", "/")
-    if name == "config" and (path_norm.endswith("/.ssh/config") or path_norm == ".ssh/config"):
+    if name == "config" and (
+        path_norm.endswith("/.ssh/config")
+        or path_norm == ".ssh/config"
+        or path_norm.endswith("/.aws/config")
+        or path_norm == ".aws/config"
+    ):
         return True
 
     # SSH private keys and similar.
