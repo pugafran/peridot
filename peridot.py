@@ -208,6 +208,9 @@ TRANSLATIONS = {
         "esta sesion no tiene un TTY interactivo real.": "this session does not have a real interactive TTY.",
         "Ejecuta Peridot directamente en una terminal interactiva.": "Run Peridot directly in an interactive terminal.",
         "No hay un TTY interactivo; se excluyen rutas sensibles por defecto. Usa --yes para incluirlas.": "No interactive TTY detected; excluding sensitive paths by default. Use --yes to include them.",
+        "No hay rutas para empaquetar. Pasa rutas explicitas o prepara tu HOME.": "No paths to pack. Pass explicit paths or prepare your HOME.",
+        "No se encontro ningun archivo exportable.": "No exportable files were found.",
+        "No quedan archivos tras aplicar exclusiones y filtros de seguridad.": "No files remain after applying excludes and security filters.",
         "falta la dependencia 'questionary' en este Python.": "the 'questionary' dependency is missing in this Python.",
         "Usa el binario instalado con './install.sh' o ejecuta 'python3 -m pip install -r requirements.txt'.": "Use the binary installed with './install.sh' or run 'python3 -m pip install -r requirements.txt'.",
         "Selecciona grupos": "Select groups",
@@ -2409,7 +2412,7 @@ def cmd_pack(args) -> None:
     key = load_key(args.key, create=True)
     paths, output = prepare_pack_inputs(args)
     if not paths:
-        die("No hay rutas para empaquetar. Pasa rutas explicitas o prepara tu HOME.")
+        die(tr("No hay rutas para empaquetar. Pasa rutas explicitas o prepara tu HOME."))
 
     scan_progress = None
     scan_task = None
@@ -2444,11 +2447,11 @@ def cmd_pack(args) -> None:
         entries = filter_entries(collect_files(paths), args.exclude)
 
     if not entries:
-        die("No se encontro ningun archivo exportable.")
+        die(tr("No se encontro ningun archivo exportable."))
     sensitive_entries = detect_sensitive_entries(entries)
     entries = filter_sensitive_entries(entries, sensitive_entries, args, is_tty=sys.stdin.isatty())
     if not entries:
-        die("No quedan archivos tras aplicar exclusiones y filtros de seguridad.")
+        die(tr("No quedan archivos tras aplicar exclusiones y filtros de seguridad."))
 
     files_manifest: list[dict] = []
     history_snapshot = save_history_snapshot(output)
