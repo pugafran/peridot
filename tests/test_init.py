@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import json
+
 import peridot
 
 
@@ -17,3 +19,17 @@ def test_init_creates_key_and_settings(tmp_path: Path, capsys):
     assert "Peridot initialized" in out
     assert key_path.exists()
     assert peridot.DEFAULT_SETTINGS_STORE.exists()
+
+
+def test_init_json_output(tmp_path: Path, capsys):
+    key_path = tmp_path / "peridot.key"
+
+    peridot.main(["--key", str(key_path), "init", "--force", "--json"])
+
+    out = capsys.readouterr().out
+    assert "Peridot initialized" not in out
+    payload = json.loads(out)
+    assert payload["key_path"].endswith("peridot.key")
+    assert payload["fingerprint"]
+    assert payload["settings_path"] == str(peridot.DEFAULT_SETTINGS_STORE)
+    assert payload["created_settings"] is True

@@ -3255,7 +3255,10 @@ def cmd_settings(args) -> None:
 def cmd_init(args) -> None:
     """Initialize Peridot local state (key + settings) with sane defaults."""
 
-    print_banner()
+    json_mode = bool(getattr(args, "json", False))
+
+    if not json_mode:
+        print_banner()
 
     key_path: Path = getattr(args, "key", DEFAULT_KEY)
     settings_path: Path = DEFAULT_SETTINGS_STORE
@@ -3264,22 +3267,41 @@ def cmd_init(args) -> None:
     key = load_key(key_path, create=True)
 
     # Ensure settings exist (or overwrite with --force).
+    created_settings = False
     if settings_path.exists() and not getattr(args, "force", False):
         settings = load_settings(settings_path)
-        console.print(f"[dim]Settings already exist at {settings_path}[/dim]")
+        if not json_mode:
+            console.print(f"[dim]Settings already exist at {settings_path}[/dim]")
     else:
         ensure_parent(settings_path)
         save_settings({**DEFAULT_SETTINGS}, settings_path)
         settings = load_settings(settings_path)
-        console.print(f"[green]Created settings at {settings_path}[/green]")
+        created_settings = True
+        if not json_mode:
+            console.print(f"[green]Created settings at {settings_path}[/green]")
+
+    payload = {
+        "key_path": str(key_path),
+        "fingerprint": fingerprint_key(key),
+        "settings_path": str(settings_path),
+        "created_settings": created_settings,
+        "language": settings.get("language"),
+        "compression_level": settings.get("compression_level"),
+        "compression_codec": active_compression_codec(),
+        "jobs": settings.get("jobs"),
+    }
+
+    if json_mode:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
 
     footer = Table.grid(padding=(0, 2))
-    footer.add_row("Key", str(key_path))
-    footer.add_row("Fingerprint", fingerprint_key(key))
-    footer.add_row("Settings", str(settings_path))
-    footer.add_row("Language", str(settings.get("language")))
-    footer.add_row("Compression", f"{settings.get('compression_level')}/9 ({active_compression_codec()})")
-    footer.add_row("Jobs", str(settings.get("jobs")))
+    footer.add_row("Key", payload["key_path"])
+    footer.add_row("Fingerprint", payload["fingerprint"])
+    footer.add_row("Settings", payload["settings_path"])
+    footer.add_row("Language", str(payload["language"]))
+    footer.add_row("Compression", f"{payload['compression_level']}/9 ({payload['compression_codec']})")
+    footer.add_row("Jobs", str(payload["jobs"]))
 
     console.print(Panel(footer, title=tr("Peridot initialized"), border_style="green"))
 
@@ -3916,6 +3938,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     init_parser = subparsers.add_parser("init", help="Inicializa Peridot (key + settings)")
     init_parser.add_argument("--force", action="store_true", help="Sobrescribe settings existentes")
+    init_parser.add_argument("--json", action="store_true", help="Structured JSON output (no banner/tables)")
     init_parser.set_defaults(func=cmd_init)
 
     ui_parser = subparsers.add_parser("ui", help="Lanza el command center visual")
