@@ -1747,12 +1747,15 @@ def filter_sensitive_entries(
     if is_tty:
         if Confirm.ask(tr("Incluir estas rutas sensibles?"), default=False):
             return entries
-        return [entry for entry in entries if entry not in sensitive_entries]
+
+        sensitive_paths = {entry.relative_path for entry in sensitive_entries}
+        return [entry for entry in entries if entry.relative_path not in sensitive_paths]
 
     console.print(
         f"[yellow]Aviso:[/yellow] {tr('No hay un TTY interactivo; se excluyen rutas sensibles por defecto. Usa --yes para incluirlas.') }"
     )
-    return [entry for entry in entries if entry not in sensitive_entries]
+    sensitive_paths = {entry.relative_path for entry in sensitive_entries}
+    return [entry for entry in entries if entry.relative_path not in sensitive_paths]
 
 
 def inflate_payload(payload: bytes, compression: str | None) -> bytes:
