@@ -1687,7 +1687,9 @@ def _is_sensitive_path(name: str, path_str: str) -> bool:
 
     # SSH config can contain host aliases, usernames, ports, proxy commands, etc.
     # Treat it as sensitive but avoid flagging generic "config" files elsewhere.
-    if name == "config" and (path_str.endswith("/.ssh/config") or path_str == ".ssh/config"):
+    # Normalize separators so Windows-style paths are covered as well.
+    path_norm = path_str.replace("\\", "/")
+    if name == "config" and (path_norm.endswith("/.ssh/config") or path_norm == ".ssh/config"):
         return True
 
     # SSH private keys and similar.

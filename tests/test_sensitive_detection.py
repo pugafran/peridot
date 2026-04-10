@@ -15,6 +15,7 @@ def test_detect_sensitive_entries_flags_common_secret_files() -> None:
         _entry("id_ed25519", ".ssh/id_ed25519"),
         _entry("known_hosts", ".ssh/known_hosts"),
         _entry("config", ".ssh/config"),
+        _entry("config", ".ssh\\config"),
         _entry("my_token.txt", "secrets/my_token.txt"),
         _entry("config.json", "token/config.json"),
         _entry("creds", "credentials.json"),
