@@ -470,7 +470,10 @@ def detect_system_language_hint() -> str | None:
     try:
         import locale
 
-        loc, _enc = locale.getdefaultlocale()  # type: ignore[attr-defined]
+        # locale.getdefaultlocale() is deprecated (Py 3.11+) and can emit
+        # DeprecationWarning in modern runtimes. locale.getlocale() is the
+        # supported alternative.
+        loc, _enc = locale.getlocale()
         if loc:
             return sanitize_language(loc)
     except Exception:

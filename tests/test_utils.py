@@ -222,3 +222,11 @@ def test_filter_sensitive_entries_keeps_when_yes_even_without_tty(tmp_path):
     filtered = peridot.filter_sensitive_entries(entries, sensitive, args, is_tty=False)
     filtered_paths = {entry.relative_path for entry in filtered}
     assert filtered_paths == {".netrc", "notes.txt"}
+
+
+def test_detect_system_language_hint_prefers_env(monkeypatch):
+    monkeypatch.setenv("LC_ALL", "es_ES.UTF-8")
+    monkeypatch.delenv("LANG", raising=False)
+    monkeypatch.delenv("LANGUAGE", raising=False)
+
+    assert peridot.detect_system_language_hint() == "es"
