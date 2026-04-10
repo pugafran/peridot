@@ -86,6 +86,12 @@ def test_decode_aesgcm_key_bytes_accepts_string_and_whitespace():
     assert peridot.decode_aesgcm_key_bytes(encoded_wrapped) == raw_key
 
 
+def test_decode_aesgcm_key_bytes_accepts_raw_bytes_with_trailing_newline():
+    raw_key = bytes(range(32))
+    assert peridot.decode_aesgcm_key_bytes(raw_key + b"\n") == raw_key
+    assert peridot.decode_aesgcm_key_bytes(raw_key + b"\r") == raw_key
+    assert peridot.decode_aesgcm_key_bytes(raw_key + b"\r\n") == raw_key
+
 
 def test_decode_aesgcm_key_bytes_accepts_hex():
     raw_key = bytes(range(32))

@@ -922,9 +922,16 @@ def decode_aesgcm_key_bytes(raw: bytes | str) -> bytes | None:
 
     Accepts:
     - Raw 32 bytes
+    - Raw 32 bytes with a trailing newline (common when copy/pasting into files)
     - Hex-encoded 32 bytes (64 hex chars, with optional whitespace/newlines)
     - base64url-encoded bytes (with or without padding, with optional whitespace/newlines)
     - A string containing either of the above (UTF-8)
+
+    Notes:
+        When the input is *bytes*, we avoid aggressively stripping whitespace
+        because a truly-random 32-byte key can contain whitespace bytes.
+        We only strip a single trailing line ending when the length suggests
+        an otherwise-valid raw key.
     """
 
     if isinstance(raw, str):
@@ -934,6 +941,16 @@ def decode_aesgcm_key_bytes(raw: bytes | str) -> bytes | None:
 
     if len(raw_bytes) == 32:
         return raw_bytes
+
+    if isinstance(raw, (bytes, bytearray)):
+        # Accept raw keys with a trailing newline/CRLF without touching
+        # interior bytes.
+        if raw_bytes.endswith(b"\r\n") and len(raw_bytes) == 34:
+            return raw_bytes[:-2]
+        if raw_bytes.endswith(b"\n") and len(raw_bytes) == 33:
+            return raw_bytes[:-1]
+        if raw_bytes.endswith(b"\r") and len(raw_bytes) == 33:
+            return raw_bytes[:-1]
 
     cleaned = b"".join(raw_bytes.split())
     if not cleaned:
