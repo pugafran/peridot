@@ -230,3 +230,13 @@ def test_detect_system_language_hint_prefers_env(monkeypatch):
     monkeypatch.delenv("LANGUAGE", raising=False)
 
     assert peridot.detect_system_language_hint() == "es"
+
+
+def test_detect_runtime_language_supports_auto(monkeypatch):
+    # Auto should resolve to the system language hint when available.
+    monkeypatch.setenv("PERIDOT_LANG", "auto")
+    monkeypatch.setenv("LANG", "es_ES.UTF-8")
+    monkeypatch.delenv("LC_ALL", raising=False)
+    monkeypatch.delenv("LANGUAGE", raising=False)
+
+    assert peridot.detect_runtime_language() == "es"

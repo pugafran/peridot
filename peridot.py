@@ -453,13 +453,20 @@ def set_current_language(language: str) -> None:
 def detect_runtime_language() -> str:
     env_language = os.environ.get("PERIDOT_LANG")
     if env_language:
+        normalized = env_language.strip().lower()
+        if normalized in {"auto", "system"}:
+            return detect_system_language_hint() or DEFAULT_SETTINGS["language"]
         return sanitize_language(env_language)
     try:
         settings_path = DEFAULT_SETTINGS_STORE
         if settings_path.exists():
             raw = json.loads(settings_path.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
-                return sanitize_language(raw.get("language"))
+                language = raw.get("language")
+                normalized = str(language or "").strip().lower()
+                if normalized in {"auto", "system"}:
+                    return detect_system_language_hint() or DEFAULT_SETTINGS["language"]
+                return sanitize_language(language)
     except Exception:
         pass
     return DEFAULT_SETTINGS["language"]
