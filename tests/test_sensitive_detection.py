@@ -47,3 +47,13 @@ def test_detect_sensitive_entries_does_not_flag_generic_config_files() -> None:
 
     sensitive = detect_sensitive_entries(entries)
     assert sensitive == []
+
+
+def test_detect_sensitive_entries_does_not_flag_public_ssh_keys() -> None:
+    entries = [
+        _entry("id_ed25519.pub", ".ssh/id_ed25519.pub"),
+        _entry("id_rsa.pub", ".ssh/id_rsa.pub"),
+    ]
+
+    sensitive = detect_sensitive_entries(entries)
+    assert sensitive == []

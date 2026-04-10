@@ -1779,9 +1779,17 @@ def _is_sensitive_path(name: str, path_str: str) -> bool:
         return True
 
     # SSH private keys and similar.
+    # Note: public keys (e.g. id_ed25519.pub) are intentionally NOT treated as
+    # sensitive. They are meant to be shared and flagging them creates noise.
     key_prefixes = {"id_rsa", "id_ed25519", "id_ecdsa", "id_dsa"}
-    if any(name == prefix or name.startswith(f"{prefix}.") for prefix in key_prefixes):
-        return True
+    for prefix in key_prefixes:
+        if name == prefix:
+            return True
+        if name.startswith(f"{prefix}."):
+            suffix = name[len(prefix) + 1 :]
+            if suffix == "pub":
+                return False
+            return True
 
     # Generic tokens: match as a path segment or separated word, not a substring.
     # Accept separators: / . _ - (and Windows \ just in case).
