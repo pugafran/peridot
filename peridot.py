@@ -1723,7 +1723,7 @@ def _is_sensitive_path(name: str, path_str: str) -> bool:
     """
 
     # Exact dotfiles / well-known filenames.
-    exact_names = {".env", ".npmrc", ".netrc", ".pypirc", "known_hosts"}
+    exact_names = {".env", ".npmrc", ".netrc", ".pypirc", "known_hosts", "authorized_keys"}
     if name in exact_names:
         return True
 
