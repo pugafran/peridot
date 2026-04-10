@@ -14,6 +14,7 @@ def test_detect_sensitive_entries_flags_common_secret_files() -> None:
         _entry("id_rsa", ".ssh/id_rsa"),
         _entry("id_ed25519", ".ssh/id_ed25519"),
         _entry("known_hosts", ".ssh/known_hosts"),
+        _entry("config", ".ssh/config"),
         _entry("my_token.txt", "secrets/my_token.txt"),
         _entry("config.json", "token/config.json"),
         _entry("creds", "credentials.json"),
@@ -28,6 +29,17 @@ def test_detect_sensitive_entries_avoids_token_substring_false_positive() -> Non
         _entry("stockton.txt", "notes/stockton.txt"),
         _entry("mytoken.txt", "notes/mytoken.txt"),
         _entry("tokenize.py", "src/tokenize.py"),
+    ]
+
+    sensitive = detect_sensitive_entries(entries)
+    assert sensitive == []
+
+
+def test_detect_sensitive_entries_does_not_flag_generic_config_files() -> None:
+    entries = [
+        _entry("config", "app/config"),
+        _entry("config", "config"),
+        _entry("config.yaml", "config.yaml"),
     ]
 
     sensitive = detect_sensitive_entries(entries)

@@ -1685,6 +1685,11 @@ def _is_sensitive_path(name: str, path_str: str) -> bool:
     if name in exact_names:
         return True
 
+    # SSH config can contain host aliases, usernames, ports, proxy commands, etc.
+    # Treat it as sensitive but avoid flagging generic "config" files elsewhere.
+    if name == "config" and (path_str.endswith("/.ssh/config") or path_str == ".ssh/config"):
+        return True
+
     # SSH private keys and similar.
     key_prefixes = {"id_rsa", "id_ed25519", "id_ecdsa"}
     if any(name == prefix or name.startswith(f"{prefix}.") for prefix in key_prefixes):
