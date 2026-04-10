@@ -100,6 +100,13 @@ DEFAULT_EXCLUDES = {
     ".yarn",
     ".local/share/Trash",
     ".config/peridot",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "node_modules",
 }
 SENSITIVE_PATTERNS = (
     "id_rsa",
