@@ -59,6 +59,13 @@ def test_sanitize_language_accepts_locales():
     assert peridot.sanitize_language("es_ES.UTF-8") == "es"
     assert peridot.sanitize_language("en_US.UTF8") == "en"
 
+    # Some platforms (notably Windows) expose locale names instead of codes.
+    assert peridot.sanitize_language("Spanish_Spain") == "es"
+    assert peridot.sanitize_language("English_United States") == "en"
+
+    # Also accept a language name with accents.
+    assert peridot.sanitize_language("Español") == "es"
+
 
 def test_sanitize_language_falls_back_to_default():
     assert peridot.sanitize_language("fr") == peridot.DEFAULT_SETTINGS["language"]

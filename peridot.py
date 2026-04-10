@@ -594,17 +594,32 @@ def sanitize_language(value: object) -> str:
 
     Accepts exact codes ("es", "en") and common locale variants such as
     "es-ES", "en_US" or "EN-us" by reducing them to the base language.
+
+    Also accepts some common OS locale *names* (especially on Windows), such as
+    "Spanish_Spain" / "English_United States".
     """
 
     raw = str(value or DEFAULT_SETTINGS["language"]).strip().lower()
     # Strip common locale suffixes such as ".UTF-8" or "@euro".
     raw = raw.split(".", 1)[0].split("@", 1)[0].replace("_", "-")
-    if raw in {"es", "en"}:
-        return raw
 
-    base = raw.split("-", 1)[0] if raw else ""
+    # Some platforms return language names (e.g. "Spanish-Spain"). Normalize
+    # accents so "Español" can be matched as "espanol".
+    raw_ascii = unicodedata.normalize("NFKD", raw)
+    raw_ascii = "".join(ch for ch in raw_ascii if not unicodedata.combining(ch))
+
+    if raw_ascii in {"es", "en"}:
+        return raw_ascii
+
+    base = raw_ascii.split("-", 1)[0] if raw_ascii else ""
     if base in {"es", "en"}:
         return base
+
+    # Accept common language names.
+    if base in {"spanish", "espanol"}:
+        return "es"
+    if base == "english":
+        return "en"
 
     return DEFAULT_SETTINGS["language"]
 
