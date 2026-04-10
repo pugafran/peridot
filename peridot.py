@@ -41,10 +41,13 @@ def require_cryptography():
     """
 
     if AESGCM is None:
+        hint = venv_activation_hint()
+        pip_hint = install_hint(".")
         print(
             tr("Error: falta la dependencia 'cryptography'.")
             + " "
-            + tr("Instalala con 'python3 -m pip install .'."),
+            + trf("Instalala con '{cmd}'.", cmd=pip_hint)
+            + ("\n" + hint if hint else ""),
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -357,7 +360,10 @@ TRANSLATIONS = {
         "Muestra la version y sale": "Show the version and exit",
         "Ruta de la clave AES-GCM (por defecto: {path})": "AES-GCM key path (default: {path})",
         "Error: falta la dependencia 'cryptography'.": "Error: missing 'cryptography' dependency.",
+        "Error: falta la dependencia 'rich'.": "Error: missing 'rich' dependency.",
         "Instalala con 'python3 -m pip install .'.": "Install it with 'python3 -m pip install .'.",
+        "Instalala con '{cmd}'.": "Install it with '{cmd}'.",
+        "Tip: activa el entorno virtual con '. .venv/bin/activate'.": "Tip: activate the virtualenv with '. .venv/bin/activate'.",
     }
 }
 
@@ -512,6 +518,31 @@ def tr(text: str) -> str:
 
 def trf(text: str, **kwargs) -> str:
     return tr(text).format(**kwargs)
+
+
+def install_hint(target: str) -> str:
+    """Return a copy/paste-friendly pip install command.
+
+    We prefer the repo virtualenv (./.venv) when present.
+    """
+
+    venv_python = Path(".venv") / "bin" / "python"
+    if venv_python.exists():
+        return f"{venv_python} -m pip install {target}"
+    return f"python -m pip install {target}"
+
+
+def venv_activation_hint() -> str | None:
+    """Suggest activating the repo virtualenv when it exists but isn't active."""
+
+    try:
+        venv_dir = Path(".venv")
+        is_venv_active = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+        if venv_dir.exists() and not is_venv_active:
+            return tr("Tip: activa el entorno virtual con '. .venv/bin/activate'.")
+    except Exception:
+        pass
+    return None
 
 
 def localize_parser(parser: argparse.ArgumentParser) -> None:
@@ -4035,8 +4066,13 @@ def main(argv: Iterable[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if not RICH_AVAILABLE:
+        hint = venv_activation_hint()
+        pip_hint = install_hint(".")
         print(
-            "Error: falta la dependencia 'rich'. Instalala con '.venv/bin/python -m pip install .'.",
+            tr("Error: falta la dependencia 'rich'.")
+            + " "
+            + trf("Instalala con '{cmd}'.", cmd=pip_hint)
+            + ("\n" + hint if hint else ""),
             file=sys.stderr,
         )
         raise SystemExit(1)
