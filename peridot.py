@@ -508,7 +508,13 @@ def localize_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def die(message: str) -> None:
-    console.print(f"[bold red]{tr('Error')}:[/bold red] {message}", style="red")
+    # Use soft_wrap so long tokens (like file paths) aren't hard-wrapped mid-string.
+    # This keeps error messages copy/paste-friendly and avoids brittle tests.
+    console.print(
+        f"[bold red]{tr('Error')}:[/bold red] {message}",
+        style="red",
+        soft_wrap=True,
+    )
     raise SystemExit(1)
 
 
