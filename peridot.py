@@ -1693,7 +1693,7 @@ def _is_sensitive_path(name: str, path_str: str) -> bool:
         return True
 
     # SSH private keys and similar.
-    key_prefixes = {"id_rsa", "id_ed25519", "id_ecdsa"}
+    key_prefixes = {"id_rsa", "id_ed25519", "id_ecdsa", "id_dsa"}
     if any(name == prefix or name.startswith(f"{prefix}.") for prefix in key_prefixes):
         return True
 

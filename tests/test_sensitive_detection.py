@@ -13,6 +13,7 @@ def test_detect_sensitive_entries_flags_common_secret_files() -> None:
         _entry(".npmrc", ".npmrc"),
         _entry("id_rsa", ".ssh/id_rsa"),
         _entry("id_ed25519", ".ssh/id_ed25519"),
+        _entry("id_dsa", ".ssh/id_dsa"),
         _entry("known_hosts", ".ssh/known_hosts"),
         _entry("config", ".ssh/config"),
         _entry("config", ".ssh\\config"),
