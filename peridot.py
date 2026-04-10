@@ -869,7 +869,7 @@ def load_profiles(profile_path: Path = DEFAULT_PROFILE_STORE) -> dict:
     try:
         raw = json.loads(profile_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        die(f"El store de perfiles es invalido: {exc}")
+        die(f"El store de perfiles es invalido ({profile_path}): {exc}")
     if not isinstance(raw, dict):
         die("El store de perfiles debe ser un objeto JSON.")
     return raw
@@ -887,7 +887,7 @@ def load_settings(settings_path: Path = DEFAULT_SETTINGS_STORE) -> dict:
     try:
         raw = json.loads(settings_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        die(f"El store de settings es invalido: {exc}")
+        die(f"El store de settings es invalido ({settings_path}): {exc}")
     if not isinstance(raw, dict):
         die("El store de settings debe ser un objeto JSON.")
     data.update(raw)

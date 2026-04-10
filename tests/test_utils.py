@@ -153,6 +153,36 @@ def test_load_profiles_rejects_non_dict(tmp_path):
         raise AssertionError("expected SystemExit")
 
 
+def test_load_profiles_rejects_invalid_json(tmp_path, capsys):
+    profiles_path = tmp_path / "profiles.json"
+    profiles_path.write_text("{not json\n")
+
+    try:
+        peridot.load_profiles(profile_path=profiles_path)
+    except SystemExit as exc:
+        assert exc.code == 1
+    else:
+        raise AssertionError("expected SystemExit")
+
+    captured = capsys.readouterr()
+    assert str(profiles_path) in (captured.out + captured.err)
+
+
+def test_load_settings_rejects_invalid_json(tmp_path, capsys):
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text("{not json\n")
+
+    try:
+        peridot.load_settings(settings_path=settings_path)
+    except SystemExit as exc:
+        assert exc.code == 1
+    else:
+        raise AssertionError("expected SystemExit")
+
+    captured = capsys.readouterr()
+    assert str(settings_path) in (captured.out + captured.err)
+
+
 def test_detect_sensitive_entries_flags_common_dotfiles(tmp_path):
     entries = [
         peridot.FileEntry(source=tmp_path / ".netrc", relative_path=".netrc", size=1, mode=0o600),
