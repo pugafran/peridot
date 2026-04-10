@@ -42,8 +42,9 @@ def require_cryptography():
 
     if AESGCM is None:
         print(
-            "Error: falta la dependencia 'cryptography'. "
-            "Instalala con 'python3 -m pip install .'.",
+            tr("Error: falta la dependencia 'cryptography'.")
+            + " "
+            + tr("Instalala con 'python3 -m pip install .'."),
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -329,6 +330,8 @@ TRANSLATIONS = {
         "Alias de apply": "Alias for apply",
         "Muestra la version y sale": "Show the version and exit",
         "Ruta de la clave AES-GCM (por defecto: {path})": "AES-GCM key path (default: {path})",
+        "Error: falta la dependencia 'cryptography'.": "Error: missing 'cryptography' dependency.",
+        "Instalala con 'python3 -m pip install .'.": "Install it with 'python3 -m pip install .'.",
     }
 }
 

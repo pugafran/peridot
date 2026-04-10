@@ -11,3 +11,5 @@ def test_tr_english_translation_known_keys():
     assert peridot.tr("Bench results") == "Bench results"
     assert peridot.tr("Next steps") == "Next steps"
     assert peridot.tr("Peridot initialized") == "Peridot initialized"
+    assert peridot.tr("Error: falta la dependencia 'cryptography'.") == "Error: missing 'cryptography' dependency."
+    assert peridot.tr("Instalala con 'python3 -m pip install .'.") == "Install it with 'python3 -m pip install .'."
