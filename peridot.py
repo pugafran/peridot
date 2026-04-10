@@ -55,6 +55,8 @@ try:
 except ModuleNotFoundError:
     zstd = None
 
+RICH_AVAILABLE = True
+
 try:
     from rich.align import Align
     from rich.console import Console
@@ -65,12 +67,26 @@ try:
     from rich.table import Table
     from rich.text import Text
 except ModuleNotFoundError:
-    print(
-        "Error: falta la dependencia 'rich'. "
-        "Instalala con 'python3 -m pip install .'.",
-        file=sys.stderr,
-    )
-    raise SystemExit(1)
+    # Keep import-time lightweight so `peridot --help/--version` can run even in
+    # constrained environments. Commands that require Rich will error later.
+    RICH_AVAILABLE = False
+
+    class Console:  # type: ignore[override]
+        def print(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            print(*args)
+
+    Align = None  # type: ignore[assignment]
+    Panel = None  # type: ignore[assignment]
+    Progress = None  # type: ignore[assignment]
+    SpinnerColumn = None  # type: ignore[assignment]
+    TextColumn = None  # type: ignore[assignment]
+    TimeElapsedColumn = None  # type: ignore[assignment]
+    TimeRemainingColumn = None  # type: ignore[assignment]
+    BarColumn = None  # type: ignore[assignment]
+    Confirm = None  # type: ignore[assignment]
+    Prompt = None  # type: ignore[assignment]
+    Table = None  # type: ignore[assignment]
+    Text = None  # type: ignore[assignment]
 
 try:
     import questionary
@@ -3964,6 +3980,14 @@ def main(argv: Iterable[str] | None = None) -> None:
 
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if not RICH_AVAILABLE:
+        print(
+            "Error: falta la dependencia 'rich'. Instalala con '.venv/bin/python -m pip install .'.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
     args.func(args)
 
 
