@@ -1304,7 +1304,9 @@ def render_config_group_table(groups: list[ConfigGroup], selected_keys: set[str]
 
 
 def checkbox_prompt(message: str, choices: list, instruction: str | None = None):
-    if not QUESTIONARY_AVAILABLE or not sys.stdin.isatty():
+    # questionary requires an interactive TTY; when stdout is not a real TTY
+    # (e.g. redirected output / CI), the UI becomes unreadable.
+    if not QUESTIONARY_AVAILABLE or not (sys.stdin.isatty() and sys.stdout.isatty()):
         return None
     return questionary.checkbox(
         tr(message),
@@ -1314,7 +1316,7 @@ def checkbox_prompt(message: str, choices: list, instruction: str | None = None)
 
 
 def checkbox_unavailable_reason() -> str | None:
-    if not sys.stdin.isatty():
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return "no_tty"
     if not QUESTIONARY_AVAILABLE:
         return "missing_questionary"
