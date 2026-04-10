@@ -1579,11 +1579,23 @@ def collect_files(
 
 
 def filter_entries(entries: list[FileEntry], excludes: list[str] | None = None) -> list[FileEntry]:
+    """Filter entries by glob patterns.
+
+    Notes:
+        Manifests can contain Windows-style paths ("\\") when generated on Windows.
+        Normalize both entry paths and patterns to POSIX-style before matching so
+        excludes behave consistently across platforms.
+    """
+
     if not excludes:
         return entries
+
+    normalized_patterns = [pattern.replace("\\", "/") for pattern in excludes]
+
     filtered: list[FileEntry] = []
     for entry in entries:
-        if any(fnmatch.fnmatch(entry.relative_path, pattern) for pattern in excludes):
+        relative_norm = entry.relative_path.replace("\\", "/")
+        if any(fnmatch.fnmatch(relative_norm, pattern) for pattern in normalized_patterns):
             continue
         filtered.append(entry)
     return filtered
