@@ -2818,12 +2818,13 @@ def cmd_pack(args) -> None:
             console.print(
                 f"[yellow]{tr('Adaptive pack:')}[/yellow] {tr('Process pool no disponible en este sistema; usando threads.')}"  # noqa: E501
             )
-        with executor:
-            pending: dict = {}
-            next_index = 1
-            completed_files = 0
+        try:
+            with executor:
+                pending: dict = {}
+                next_index = 1
+                completed_files = 0
 
-            def submit_one(index: int, entry: FileEntry) -> None:
+                def submit_one(index: int, entry: FileEntry) -> None:
                     payload_name = f"{index:04d}-{hashlib.sha256(entry.relative_path.encode('utf-8')).hexdigest()[:16]}.bin"
                     future = executor.submit(
                         build_payload_job,
@@ -2836,70 +2837,73 @@ def cmd_pack(args) -> None:
                     )
                     pending[future] = (entry, payload_name)
 
-            inflight_limit = initial_jobs
-            inflight_limit, pressure_label = adaptive_next_inflight_limit(inflight_limit, requested_jobs)
-            while next_index <= len(entries) and len(pending) < inflight_limit:
-                submit_one(next_index, entries[next_index - 1])
-                next_index += 1
-
-            while pending:
-                done, _ = wait(set(pending.keys()), return_when=FIRST_COMPLETED)
-                for future in done:
-                    entry, payload_name = pending.pop(future)
-                    try:
-                        encrypted, record = future.result()
-                    except Exception as exc:
-                        record = {
-                            "path": entry.relative_path,
-                            "source": str(entry.source),
-                            "error": f"{type(exc).__name__}: {exc}",
-                        }
-                        encrypted = None
-
-                    if encrypted is None:
-                        skipped_files.append(record)
-                        if not getattr(args, "json", False):
-                            console.print(
-                                f"[yellow]Warning:[/yellow] skipped unreadable file: {record.get('path')} ({record.get('error')})"
-                            )
-                        continue
-
-                    # Write payload directly into the bundle.
-                    bundle.writestr(record["payload"], encrypted)
-
-                    files_manifest.append(record)
-                    completed_files += 1
-                    if progress is not None and task is not None:
-                        progress.update(
-                            task,
-                            advance=record["size"],
-                            file_count=completed_files,
-                            worker_status=f"active {inflight_limit}/{requested_jobs} | {pressure_label}",
-                        )
-
-                previous_limit = inflight_limit
+                inflight_limit = initial_jobs
                 inflight_limit, pressure_label = adaptive_next_inflight_limit(inflight_limit, requested_jobs)
-                if inflight_limit != previous_limit:
-                    if inflight_limit > previous_limit:
-                        detail = trf(
-                            "subiendo ventana activa {previous} -> {current} ({label}).",
-                            previous=previous_limit,
-                            current=inflight_limit,
-                            label=pressure_label,
-                        )
-                    else:
-                        detail = trf(
-                            "bajando ventana activa {previous} -> {current} ({label}).",
-                            previous=previous_limit,
-                            current=inflight_limit,
-                            label=pressure_label,
-                        )
-                    if not getattr(args, "json", False):
-                        console.print(f"[dim]{tr('Adaptive pack:')}[/dim] {detail}")
-
                 while next_index <= len(entries) and len(pending) < inflight_limit:
                     submit_one(next_index, entries[next_index - 1])
                     next_index += 1
+
+                while pending:
+                    done, _ = wait(set(pending.keys()), return_when=FIRST_COMPLETED)
+                    for future in done:
+                        entry, payload_name = pending.pop(future)
+                        try:
+                            encrypted, record = future.result()
+                        except Exception as exc:
+                            record = {
+                                "path": entry.relative_path,
+                                "source": str(entry.source),
+                                "error": f"{type(exc).__name__}: {exc}",
+                            }
+                            encrypted = None
+
+                        if encrypted is None:
+                            skipped_files.append(record)
+                            if not getattr(args, "json", False):
+                                console.print(
+                                    f"[yellow]Warning:[/yellow] skipped unreadable file: {record.get('path')} ({record.get('error')})"
+                                )
+                            continue
+
+                        # Write payload directly into the bundle.
+                        bundle.writestr(record["payload"], encrypted)
+
+                        files_manifest.append(record)
+                        completed_files += 1
+                        if progress is not None and task is not None:
+                            progress.update(
+                                task,
+                                advance=record["size"],
+                                file_count=completed_files,
+                                worker_status=f"active {inflight_limit}/{requested_jobs} | {pressure_label}",
+                            )
+
+                    previous_limit = inflight_limit
+                    inflight_limit, pressure_label = adaptive_next_inflight_limit(inflight_limit, requested_jobs)
+                    if inflight_limit != previous_limit:
+                        if inflight_limit > previous_limit:
+                            detail = trf(
+                                "subiendo ventana activa {previous} -> {current} ({label}).",
+                                previous=previous_limit,
+                                current=inflight_limit,
+                                label=pressure_label,
+                            )
+                        else:
+                            detail = trf(
+                                "bajando ventana activa {previous} -> {current} ({label}).",
+                                previous=previous_limit,
+                                current=inflight_limit,
+                                label=pressure_label,
+                            )
+                        if not getattr(args, "json", False):
+                            console.print(f"[dim]{tr('Adaptive pack:')}[/dim] {detail}")
+
+                    while next_index <= len(entries) and len(pending) < inflight_limit:
+                        submit_one(next_index, entries[next_index - 1])
+                        next_index += 1
+        finally:
+            if progress_ctx is not None:
+                progress_ctx.__exit__(None, None, None)
 
         files_manifest.sort(key=lambda item: item["path"])
         manifest = build_manifest(args, files_manifest, [str(path) for path in paths])
