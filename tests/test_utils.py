@@ -244,6 +244,28 @@ def test_collect_files_prunes_excluded_directories(monkeypatch, tmp_path):
     assert any(p.endswith("/keep/ok.txt") for p in rels)
     assert not any(p.endswith("/.cache/secret.txt") for p in rels)
 
+def test_collect_files_skips_unstatable_files(monkeypatch, tmp_path):
+    bad = tmp_path / "bad.txt"
+    bad.write_text("bad")
+    ok = tmp_path / "ok.txt"
+    ok.write_text("ok")
+
+    original_stat = peridot.Path.stat
+
+    def fake_stat(self, *args, **kwargs):
+        if self == bad:
+            raise PermissionError("nope")
+        return original_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(peridot.Path, "stat", fake_stat, raising=True)
+
+    entries = peridot.collect_files([tmp_path])
+    rels = {entry.relative_path.replace('\\', '/') for entry in entries}
+
+    assert any(p.endswith("/ok.txt") for p in rels)
+    assert not any(p.endswith("/bad.txt") for p in rels)
+
+
 def test_load_profiles_rejects_non_dict(tmp_path):
     profiles_path = tmp_path / "profiles.json"
     profiles_path.write_text("[]\n")

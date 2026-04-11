@@ -1809,12 +1809,22 @@ def collect_files(
     seen: set[str] = set()
     discovered = 0
 
+    def is_symlink_safe(path: Path) -> bool | None:
+        try:
+            return path.is_symlink()
+        except (PermissionError, OSError):
+            return None
+
     for source in paths:
         expanded = source.expanduser()
         if not expanded.exists():
             console.print(f"[yellow]Aviso:[/yellow] se omite {expanded}, no existe.")
             continue
-        if expanded.is_symlink():
+        is_symlink = is_symlink_safe(expanded)
+        if is_symlink is None:
+            console.print(f"[yellow]Aviso:[/yellow] se omite {expanded}, no se puede comprobar symlink.")
+            continue
+        if is_symlink:
             console.print(f"[yellow]Aviso:[/yellow] se omite {expanded}, es un symlink.")
             continue
         if should_exclude_entry(expanded):
@@ -1824,7 +1834,13 @@ def collect_files(
         if expanded.is_file():
             relative = expanded.relative_to(export_root).as_posix()
             if relative not in seen:
-                stat_result = expanded.stat()
+                try:
+                    stat_result = expanded.stat()
+                except (PermissionError, OSError) as exc:
+                    console.print(
+                        f"[yellow]Aviso:[/yellow] se omite {expanded}, no se puede leer metadata ({type(exc).__name__}: {exc})."
+                    )
+                    continue
                 seen.add(relative)
                 entries.append(FileEntry(expanded, relative, stat_result.st_size, stat.S_IMODE(stat_result.st_mode)))
                 discovered += 1
@@ -1840,19 +1856,26 @@ def collect_files(
             dirs[:] = [
                 d
                 for d in dirs
-                if not (root_path / d).is_symlink() and not should_exclude_entry(root_path / d)
+                if (is_symlink_safe(root_path / d) is False) and not should_exclude_entry(root_path / d)
             ]
 
             for name in files:
                 file_path = root_path / name
-                if file_path.is_symlink():
+                is_symlink = is_symlink_safe(file_path)
+                if is_symlink is None or is_symlink:
                     continue
                 if should_exclude_entry(file_path):
                     continue
                 relative = file_path.relative_to(export_root).as_posix()
                 if relative in seen:
                     continue
-                stat_result = file_path.stat()
+                try:
+                    stat_result = file_path.stat()
+                except (PermissionError, OSError) as exc:
+                    console.print(
+                        f"[yellow]Aviso:[/yellow] se omite {file_path}, no se puede leer metadata ({type(exc).__name__}: {exc})."
+                    )
+                    continue
                 seen.add(relative)
                 entries.append(FileEntry(file_path, relative, stat_result.st_size, stat.S_IMODE(stat_result.st_mode)))
                 discovered += 1
