@@ -38,6 +38,22 @@ def test_format_bytes():
     assert peridot.format_bytes(1024) == "1.0 KB"
 
 
+def test_die_falls_back_to_plain_stderr_without_rich(monkeypatch, capsys):
+    monkeypatch.setattr(peridot, "RICH_AVAILABLE", False)
+    monkeypatch.setattr(peridot, "CURRENT_LANGUAGE", "en")
+
+    try:
+        peridot.die("boom")
+    except SystemExit as exc:
+        assert exc.code == 1
+    else:
+        raise AssertionError("expected SystemExit")
+
+    captured = capsys.readouterr()
+    assert "Error: boom" in captured.err
+    assert "[bold red]" not in captured.err
+
+
 def test_sanitize_compression_level():
     assert peridot.sanitize_compression_level(0) == 0
     assert peridot.sanitize_compression_level(9) == 9

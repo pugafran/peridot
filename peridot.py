@@ -588,6 +588,17 @@ def localize_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def die(message: str) -> None:
+    """Print an error message and exit.
+
+    When Rich is available we use markup/styling. Otherwise, fall back to a
+    plain stderr message so the output is still readable (instead of showing
+    raw "[bold red]" tags).
+    """
+
+    if not RICH_AVAILABLE:
+        print(f"{tr('Error')}: {message}", file=sys.stderr)
+        raise SystemExit(1)
+
     # Use soft_wrap so long tokens (like file paths) aren't hard-wrapped mid-string.
     # This keeps error messages copy/paste-friendly and avoids brittle tests.
     console.print(
