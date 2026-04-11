@@ -4125,7 +4125,11 @@ def main(argv: Iterable[str] | None = None) -> None:
             "Tip: your system language looks Spanish. You can switch Peridot UI/CLI with PERIDOT_LANG=es or via the Settings UI.\n"
         )
 
-    if not RICH_AVAILABLE:
+    # Rich is required for the full TUI/pretty output, but JSON modes should
+    # still work in constrained environments.
+    json_mode = bool(getattr(args, "json", False))
+
+    if not RICH_AVAILABLE and not json_mode:
         hint = venv_activation_hint()
         pip_hint = install_hint(".")
         print(
