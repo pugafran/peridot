@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.6 - 2026-04-11
+
+- cli: add self-update flow:
+  - background check (cached daily) to suggest updating when a new `peridot-cli` version is available.
+  - `peridot self-update` command to run `python -m pip install -U peridot-cli`.
+
 ## 0.4.5 - 2026-04-11
 
 - pack: safer defaults (exclude common dev dirs, VCS metadata) and improved sensitive-path detection (SSH/AWS/Docker/Git).
