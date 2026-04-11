@@ -5,138 +5,249 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Peridot (Experimental GUI)</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/web/style.css" />
   </head>
-  <body class="bg-slate-950 text-slate-100">
-    <div class="max-w-4xl mx-auto px-6 py-10">
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-3xl font-semibold tracking-tight">Peridot</h1>
-          <p class="text-slate-400">Experimental local GUI · runs the installed <code class="text-slate-200">peridot</code> CLI in <code class="text-slate-200">--json</code> mode.</p>
-        </div>
-        <div class="text-xs text-slate-400">Port: <span id="port">8844</span></div>
-      </div>
+  <body class="bg-slate-950 text-slate-100 glow">
+    <div id="toasts" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
-        <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-          <div class="flex items-center justify-between">
-            <h2 class="font-medium">Doctor</h2>
-            <button id="btnDoctor" class="px-3 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-700 text-emerald-200">Refresh</button>
+    <div class="max-w-6xl mx-auto px-6 py-8">
+      <div class="flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-800 flex items-center justify-center">
+            <div class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_18px_rgba(16,185,129,.55)]"></div>
           </div>
-          <pre id="doctor" class="mt-3 text-xs overflow-auto max-h-64 bg-slate-950/60 rounded-lg p-3 border border-slate-800">(not loaded)</pre>
-        </div>
-
-        <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-          <div class="flex items-center justify-between">
-            <h2 class="font-medium">Settings</h2>
-            <button id="btnSettings" class="px-3 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 border border-sky-700 text-sky-200">Refresh</button>
-          </div>
-          <pre id="settings" class="mt-3 text-xs overflow-auto max-h-64 bg-slate-950/60 rounded-lg p-3 border border-slate-800">(not loaded)</pre>
-        </div>
-      </div>
-
-      <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-6 mt-6">
-        <h2 class="font-medium">Pack</h2>
-        <p class="text-slate-400 text-sm mt-1">Create a bundle via <code class="text-slate-200">peridot pack --json --yes</code>. This MVP polls job status (no streaming yet).</p>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
           <div>
-            <label class="block text-sm text-slate-300">Bundle name</label>
-            <input id="packName" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2" placeholder="my-bundle" />
-          </div>
-          <div class="md:col-span-2">
-            <label class="block text-sm text-slate-300">Paths (comma separated)</label>
-            <input id="packPaths" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2" placeholder="~/.config, ~/.gitconfig" />
+            <h1 class="text-2xl font-semibold tracking-tight">Peridot</h1>
+            <p class="text-slate-400 text-sm">Experimental local GUI · <span class="text-slate-300">Ctrl/⌘K</span> for actions · version <span id="metaVersion" class="text-slate-200">?</span></p>
           </div>
         </div>
-
-        <div class="flex gap-3 mt-4">
-          <button id="btnPack" class="px-4 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-700 text-purple-200">Start pack</button>
-          <div class="text-sm text-slate-400 self-center" id="packStatus">idle</div>
-        </div>
-
-        <pre id="packResult" class="mt-4 text-xs overflow-auto max-h-64 bg-slate-950/60 rounded-lg p-3 border border-slate-800">(no job)</pre>
+        <div class="text-xs text-slate-500">Local app · 127.0.0.1:8844</div>
       </div>
 
-      <div class="text-xs text-slate-500 mt-10">
-        Tip: set <code class="text-slate-200">PERIDOT_EXE</code> if the GUI should call a specific peridot binary.
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-5 mt-8">
+        <aside class="md:col-span-3">
+          <div class="rounded-2xl border border-slate-800 bg-slate-900/35 backdrop-blur p-3">
+            <div class="text-xs text-slate-400 px-2 py-1">Navigation</div>
+            <div class="mt-2 flex flex-col gap-1">
+              <button class="navbtn px-3 py-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-900/40 transition text-left" data-route="home">
+                <div class="text-sm">Dashboard</div>
+                <div class="text-xs text-slate-500">Recent + shortcuts</div>
+              </button>
+              <button class="navbtn px-3 py-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-900/40 transition text-left" data-route="pack">
+                <div class="text-sm">Pack</div>
+                <div class="text-xs text-slate-500">Wizard</div>
+              </button>
+              <button class="navbtn px-3 py-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-900/40 transition text-left" data-route="apply">
+                <div class="text-sm">Apply</div>
+                <div class="text-xs text-slate-500">Wizard (mock)</div>
+              </button>
+              <button class="navbtn px-3 py-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-900/40 transition text-left" data-route="inspect">
+                <div class="text-sm">Inspect</div>
+                <div class="text-xs text-slate-500">Manifest + files (mock)</div>
+              </button>
+              <div class="h-px bg-slate-800 my-2"></div>
+              <button class="navbtn px-3 py-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-900/40 transition text-left" data-route="doctor">
+                <div class="text-sm">Doctor</div>
+                <div class="text-xs text-slate-500">Diagnostics</div>
+              </button>
+              <button class="navbtn px-3 py-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-900/40 transition text-left" data-route="settings">
+                <div class="text-sm">Settings</div>
+                <div class="text-xs text-slate-500">JSON</div>
+              </button>
+            </div>
+          </div>
+
+          <div class="rounded-2xl border border-slate-800 bg-slate-900/25 backdrop-blur p-4 mt-4">
+            <div class="text-xs text-slate-400">Tip</div>
+            <div class="text-sm text-slate-200 mt-1">Keep Peridot safe by default. Review “Sensitive paths” before creating a bundle.</div>
+          </div>
+        </aside>
+
+        <main class="md:col-span-9">
+          <div class="rounded-2xl border border-slate-800 bg-slate-900/30 backdrop-blur p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-xs text-slate-400" id="navTitle">Dashboard</div>
+                <div class="text-lg font-medium mt-1">Minimal, fast, keyboard-first.</div>
+              </div>
+              <button class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-sm" onclick="document.dispatchEvent(new KeyboardEvent('keydown',{key:'k',ctrlKey:true}))">Ctrl/⌘K</button>
+            </div>
+          </div>
+
+          <div id="view" class="mt-5">
+            <section id="route-home" class="fade-in">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button class="rounded-2xl border border-slate-800 bg-slate-900/30 hover:bg-slate-900/45 transition p-5 text-left" onclick="window.location.hash='';">
+                  <div class="text-sm text-slate-400">Create</div>
+                  <div class="text-lg font-medium mt-1">Pack a bundle</div>
+                  <div class="text-xs text-slate-500 mt-2">Guided wizard · safe defaults</div>
+                </button>
+                <button class="rounded-2xl border border-slate-800 bg-slate-900/30 hover:bg-slate-900/45 transition p-5 text-left" disabled>
+                  <div class="text-sm text-slate-400">Restore</div>
+                  <div class="text-lg font-medium mt-1">Apply a bundle</div>
+                  <div class="text-xs text-slate-500 mt-2">Preview + confirm</div>
+                </button>
+                <button class="rounded-2xl border border-slate-800 bg-slate-900/30 hover:bg-slate-900/45 transition p-5 text-left" disabled>
+                  <div class="text-sm text-slate-400">Explore</div>
+                  <div class="text-lg font-medium mt-1">Inspect</div>
+                  <div class="text-xs text-slate-500 mt-2">Manifest + file list</div>
+                </button>
+              </div>
+
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 mt-4">
+                <div class="text-sm font-medium">Roadmap for this experimental GUI</div>
+                <ul class="text-sm text-slate-300 mt-2 space-y-1 list-disc list-inside">
+                  <li>Pack wizard with real scan endpoint (sensitive paths + excludes)</li>
+                  <li>Streaming progress (SSE/WebSocket) for pack/apply</li>
+                  <li>Bundle library: local bundles + history snapshots</li>
+                  <li>Tauri packaging (optional)</li>
+                </ul>
+              </div>
+            </section>
+
+            <section id="route-doctor" class="hidden fade-in">
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/25 p-5">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm font-medium">Doctor</div>
+                    <div class="text-xs text-slate-500">Calls <code class="text-slate-200">peridot doctor --json</code></div>
+                  </div>
+                  <button class="px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-800 text-emerald-200 text-sm" onclick="window.__refreshDoctor && window.__refreshDoctor()">Refresh</button>
+                </div>
+                <pre id="doctorOut" class="mt-4 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(not loaded)</pre>
+              </div>
+            </section>
+
+            <section id="route-settings" class="hidden fade-in">
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/25 p-5">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm font-medium">Settings</div>
+                    <div class="text-xs text-slate-500">Calls <code class="text-slate-200">peridot settings --json</code></div>
+                  </div>
+                  <button class="px-3 py-2 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-800 text-sky-200 text-sm" onclick="window.__refreshSettings && window.__refreshSettings()">Refresh</button>
+                </div>
+                <pre id="settingsOut" class="mt-4 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(not loaded)</pre>
+              </div>
+            </section>
+
+            <section id="route-pack" class="hidden fade-in">
+              <input id="packStep" type="hidden" value="1" />
+
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/25 p-6">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm font-medium">Pack wizard</div>
+                    <div class="text-xs text-slate-500">Make a bundle safely. Minimal decisions, good defaults.</div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button id="packPrev" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-sm">Back</button>
+                    <button id="packNext" class="px-3 py-2 rounded-xl border border-emerald-800 bg-emerald-500/15 hover:bg-emerald-500/25 transition text-sm text-emerald-200">Next</button>
+                  </div>
+                </div>
+
+                <div class="mt-5 flex items-center gap-2 text-xs text-slate-400">
+                  <div class="px-2 py-1 rounded-lg border border-slate-800 bg-slate-950/40">1 Preset</div>
+                  <div class="px-2 py-1 rounded-lg border border-slate-800 bg-slate-950/40">2 Details</div>
+                  <div class="px-2 py-1 rounded-lg border border-slate-800 bg-slate-950/40">3 Sensitive</div>
+                  <div class="px-2 py-1 rounded-lg border border-slate-800 bg-slate-950/40">4 Create</div>
+                </div>
+              </div>
+
+              <div class="pack-step mt-4" id="pack-step-1">
+                <div class="rounded-2xl border border-slate-800 bg-slate-900/20 p-6">
+                  <div class="text-sm font-medium">Choose a preset</div>
+                  <div class="text-xs text-slate-500 mt-1">Start from a curated set of dotfiles for your OS/shell.</div>
+                  <div id="presetGrid" class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4"></div>
+                </div>
+              </div>
+
+              <div class="pack-step hidden mt-4" id="pack-step-2">
+                <div class="rounded-2xl border border-slate-800 bg-slate-900/20 p-6">
+                  <div class="text-sm font-medium">Bundle details</div>
+                  <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+                    <div>
+                      <label class="block text-sm text-slate-300">Name</label>
+                      <input id="packName" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="my-bundle" />
+                    </div>
+                    <div class="md:col-span-2">
+                      <label class="block text-sm text-slate-300">Paths (comma separated)</label>
+                      <input id="packPaths" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="~/.config, ~/.gitconfig" />
+                      <div class="text-xs text-slate-500 mt-2">Next step will scan paths and show sensitive files before creating the bundle.</div>
+                    </div>
+                  </div>
+                  <div class="mt-4">
+                    <label class="block text-sm text-slate-300">Output (optional)</label>
+                    <input id="packOutput" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="my-bundle.peridot" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="pack-step hidden mt-4" id="pack-step-3">
+                <div class="rounded-2xl border border-slate-800 bg-slate-900/20 p-6">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <div class="text-sm font-medium">Sensitive paths</div>
+                      <div class="text-xs text-slate-500 mt-1">Peridot is safe by default. Review these before including them.</div>
+                    </div>
+                    <div class="text-xs text-slate-400">recommended: exclude</div>
+                  </div>
+                  <div id="sensitiveList" class="mt-4 flex flex-col gap-2"></div>
+                </div>
+              </div>
+
+              <div class="pack-step hidden mt-4" id="pack-step-4">
+                <div class="rounded-2xl border border-slate-800 bg-slate-900/20 p-6">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <div class="text-sm font-medium">Create bundle</div>
+                      <div class="text-xs text-slate-500 mt-1">Runs <code class="text-slate-200">peridot pack --json --yes</code> and shows the result.</div>
+                    </div>
+                    <button id="packRunBtn" class="px-4 py-2 rounded-xl border border-purple-800 bg-purple-500/15 hover:bg-purple-500/25 transition text-sm text-purple-200">Create</button>
+                  </div>
+                  <div class="text-xs text-slate-400 mt-3" id="packRunStatus">idle</div>
+                  <pre id="packJob" class="mt-4 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(no job)</pre>
+                </div>
+              </div>
+            </section>
+
+            <section id="route-apply" class="hidden fade-in">
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/25 p-6">
+                <div class="text-sm font-medium">Apply wizard (mock)</div>
+                <div class="text-xs text-slate-500 mt-1">Next: preview diff + confirm token flow.</div>
+              </div>
+            </section>
+
+            <section id="route-inspect" class="hidden fade-in">
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/25 p-6">
+                <div class="text-sm font-medium">Inspect (mock)</div>
+                <div class="text-xs text-slate-500 mt-1">Next: manifest viewer + file list with filters.</div>
+              </div>
+            </section>
+          </div>
+        </main>
       </div>
     </div>
 
+    <!-- Command palette -->
+    <div id="paletteOverlay" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-40"></div>
+    <div id="palette" class="hidden fixed z-50 left-1/2 top-20 -translate-x-1/2 w-[min(720px,calc(100vw-2rem))]">
+      <div class="rounded-2xl border border-slate-700 bg-slate-950/80 backdrop-blur shadow-2xl">
+        <div class="p-3 border-b border-slate-800">
+          <input id="paletteInput" class="w-full rounded-xl bg-slate-900/40 border border-slate-800 px-3 py-2 text-sm outline-none focus:border-emerald-700" placeholder="Search actions…" />
+        </div>
+        <div class="p-2 max-h-96 overflow-auto">
+          <div id="paletteItems" class="flex flex-col gap-1"></div>
+        </div>
+        <div class="p-3 border-t border-slate-800 text-xs text-slate-500">Enter to run · Esc to close</div>
+      </div>
+    </div>
+
+    <script src="/web/app.js"></script>
     <script>
-      const $ = (id) => document.getElementById(id);
-
-      async function getJson(path) {
-        const r = await fetch(path);
-        if (!r.ok) throw new Error(await r.text());
-        return await r.json();
-      }
-
-      function pretty(obj) {
-        return JSON.stringify(obj, null, 2);
-      }
-
-      async function refreshDoctor() {
-        $("doctor").textContent = "loading…";
-        try {
-          $("doctor").textContent = pretty(await getJson('/api/doctor'));
-        } catch (e) {
-          $("doctor").textContent = "error: " + e;
-        }
-      }
-
-      async function refreshSettings() {
-        $("settings").textContent = "loading…";
-        try {
-          $("settings").textContent = pretty(await getJson('/api/settings'));
-        } catch (e) {
-          $("settings").textContent = "error: " + e;
-        }
-      }
-
-      async function startPack() {
-        const name = $("packName").value.trim();
-        const paths = $("packPaths").value.split(',').map(s => s.trim()).filter(Boolean);
-        if (!name) {
-          $("packStatus").textContent = "name required";
-          return;
-        }
-        $("packStatus").textContent = "starting…";
-        $("packResult").textContent = "";
-
-        const r = await fetch('/api/pack', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, paths })
-        });
-        if (!r.ok) {
-          $("packStatus").textContent = "error";
-          $("packResult").textContent = await r.text();
-          return;
-        }
-        const { job_id } = await r.json();
-        $("packStatus").textContent = "job " + job_id;
-
-        // Poll
-        while (true) {
-          const j = await getJson(`/api/jobs/${job_id}`);
-          $("packResult").textContent = pretty(j);
-          if (j.status === 'done' || j.status === 'error') {
-            $("packStatus").textContent = j.status;
-            break;
-          }
-          await new Promise(res => setTimeout(res, 800));
-        }
-      }
-
-      $("btnDoctor").addEventListener('click', refreshDoctor);
-      $("btnSettings").addEventListener('click', refreshSettings);
-      $("btnPack").addEventListener('click', () => startPack().catch(e => {
-        $("packStatus").textContent = "error";
-        $("packResult").textContent = String(e);
-      }));
-
-      refreshDoctor();
-      refreshSettings();
+      // bridge for buttons
+      window.__refreshDoctor = () => {};
+      window.__refreshSettings = () => {};
     </script>
   </body>
 </html>

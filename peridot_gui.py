@@ -71,13 +71,48 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
 
 def create_app():
     from fastapi import FastAPI, HTTPException
-    from fastapi.responses import HTMLResponse
+    from fastapi.responses import FileResponse, HTMLResponse
 
     app = FastAPI(title="Peridot GUI (experimental)")
 
+    web_root = Path(__file__).parent / "web"
+
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
-        return (Path(__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
+        return (web_root / "index.html").read_text(encoding="utf-8")
+
+    @app.get("/web/{asset}")
+    def web_asset(asset: str):
+        path = (web_root / asset).resolve()
+        if not str(path).startswith(str(web_root.resolve())):
+            raise HTTPException(status_code=400, detail="invalid asset")
+        if not path.exists() or not path.is_file():
+            raise HTTPException(status_code=404, detail="not found")
+        return FileResponse(path)
+
+    @app.get("/api/meta")
+    def meta() -> dict[str, Any]:
+        # Minimal metadata for the GUI.
+        # Presets are static in peridot.py, so we expose them here so the UI can render cards.
+        try:
+            out = _run_peridot_json(["doctor", "--json"])
+            peridot_version = out.get("peridot_version")
+        except Exception:
+            peridot_version = None
+
+        try:
+            import peridot as peridot_mod  # type: ignore
+
+            presets = []
+            for k, v in getattr(peridot_mod, "PRESET_LIBRARY", {}).items():
+                presets.append({"key": k, **{kk: v.get(kk) for kk in ("description", "platform", "shell", "tags")}})
+        except Exception:
+            presets = []
+
+        return {
+            "version": peridot_version,
+            "presets": sorted(presets, key=lambda p: p.get("key") or ""),
+        }
 
     @app.get("/api/doctor")
     def doctor() -> dict[str, Any]:
