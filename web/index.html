@@ -30,11 +30,11 @@
             <div class="text-xs text-slate-400 px-2 py-1">Navigation</div>
             <div class="mt-2 flex flex-col gap-1">
               <button class="navbtn px-3 py-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-900/40 transition text-left" data-route="home">
-                <div class="text-sm">Dashboard</div>
+                <div class="text-sm" data-i18n="nav.dashboard">Dashboard</div>
                 <div class="text-xs text-slate-500">Recent + shortcuts</div>
               </button>
               <button class="navbtn px-3 py-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-900/40 transition text-left" data-route="pack">
-                <div class="text-sm">Pack</div>
+                <div class="text-sm" data-i18n="nav.pack">Pack</div>
                 <div class="text-xs text-slate-500">Wizard</div>
               </button>
               <button class="navbtn px-3 py-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-900/40 transition text-left" data-route="apply">
@@ -246,7 +246,7 @@
       </div>
     </div>
 
-    <script src="/web/app.js"></script>
+    <script type="module" src="/web/app.js"></script>
     <script>
       // bridge for buttons
       window.__refreshDoctor = () => {};

@@ -1,0 +1,103 @@
+// Minimal i18n for the experimental GUI.
+// Language source: /api/meta.language (derived from Peridot settings), fallback to 'en'.
+
+export const STRINGS = {
+  en: {
+    'nav.dashboard': 'Dashboard',
+    'nav.pack': 'Pack',
+    'nav.apply': 'Apply',
+    'nav.inspect': 'Inspect',
+    'nav.doctor': 'Doctor',
+    'nav.settings': 'Settings',
+    'hero.subtitle': 'Experimental local GUI · Ctrl/⌘K for actions · version {version}',
+    'panel.title': 'Minimal, fast, keyboard-first.',
+
+    'pack.wizard': 'Pack wizard',
+    'pack.wizard.subtitle': 'Make a bundle safely. Minimal decisions, good defaults.',
+    'pack.step.1': '1 Preset',
+    'pack.step.2': '2 Details',
+    'pack.step.3': '3 Sensitive',
+    'pack.step.4': '4 Create',
+    'pack.preset.title': 'Choose a preset',
+    'pack.preset.subtitle': 'Start from a curated set of dotfiles for your OS/shell.',
+    'pack.details.title': 'Bundle details',
+    'pack.details.name': 'Name',
+    'pack.details.paths': 'Paths (comma separated)',
+    'pack.details.output': 'Output (optional)',
+    'pack.sensitive.title': 'Sensitive paths',
+    'pack.sensitive.subtitle': 'Peridot is safe by default. Toggle what to include.',
+    'pack.sensitive.excludeAll': 'Exclude all',
+    'pack.sensitive.includeAll': 'Include all',
+    'pack.create.title': 'Create bundle',
+    'pack.create.subtitle': 'Runs peridot pack --json --yes and shows the result.',
+    'pack.create.button': 'Create',
+    'pack.back': 'Back',
+    'pack.next': 'Next',
+
+    'status.starting': 'starting…',
+    'status.finalizing': 'finalizing…',
+
+    'toast.scan': 'Scanning…',
+    'toast.scanFailed': 'Scan failed: {err}',
+    'toast.preset': 'Preset: {preset}',
+    'toast.excludedAllSensitive': 'Excluded all sensitive paths',
+    'toast.includingAllSensitive': 'Including all sensitive paths (not recommended)',
+    'toast.includingSensitiveOne': 'Including {path}',
+    'toast.excludingSensitiveOne': 'Excluding {path}',
+    'toast.packCompleted': 'Pack completed',
+    'toast.packFailed': 'Pack failed: {err}',
+    'toast.nameRequired': 'Bundle name required',
+  },
+  es: {
+    'nav.dashboard': 'Dashboard',
+    'nav.pack': 'Empaquetar',
+    'nav.apply': 'Aplicar',
+    'nav.inspect': 'Inspeccionar',
+    'nav.doctor': 'Doctor',
+    'nav.settings': 'Settings',
+    'hero.subtitle': 'GUI local experimental · Ctrl/⌘K acciones · versión {version}',
+    'panel.title': 'Minimalista, rápida y keyboard-first.',
+
+    'pack.wizard': 'Asistente de empaquetado',
+    'pack.wizard.subtitle': 'Crea un bundle de forma segura. Pocas decisiones, buenos defaults.',
+    'pack.step.1': '1 Preset',
+    'pack.step.2': '2 Detalles',
+    'pack.step.3': '3 Sensibles',
+    'pack.step.4': '4 Crear',
+    'pack.preset.title': 'Elige un preset',
+    'pack.preset.subtitle': 'Empieza con un set curado de dotfiles para tu OS/shell.',
+    'pack.details.title': 'Detalles del bundle',
+    'pack.details.name': 'Nombre',
+    'pack.details.paths': 'Rutas (separadas por coma)',
+    'pack.details.output': 'Salida (opcional)',
+    'pack.sensitive.title': 'Rutas sensibles',
+    'pack.sensitive.subtitle': 'Peridot es seguro por defecto. Marca qué incluir.',
+    'pack.sensitive.excludeAll': 'Excluir todo',
+    'pack.sensitive.includeAll': 'Incluir todo',
+    'pack.create.title': 'Crear bundle',
+    'pack.create.subtitle': 'Ejecuta peridot pack --json --yes y muestra el resultado.',
+    'pack.create.button': 'Crear',
+    'pack.back': 'Atrás',
+    'pack.next': 'Siguiente',
+
+    'status.starting': 'iniciando…',
+    'status.finalizing': 'finalizando…',
+
+    'toast.scan': 'Escaneando…',
+    'toast.scanFailed': 'Fallo de escaneo: {err}',
+    'toast.preset': 'Preset: {preset}',
+    'toast.excludedAllSensitive': 'Se han excluido todas las rutas sensibles',
+    'toast.includingAllSensitive': 'Incluyendo rutas sensibles (no recomendado)',
+    'toast.includingSensitiveOne': 'Incluyendo {path}',
+    'toast.excludingSensitiveOne': 'Excluyendo {path}',
+    'toast.packCompleted': 'Bundle creado',
+    'toast.packFailed': 'Fallo al empaquetar: {err}',
+    'toast.nameRequired': 'Falta el nombre del bundle',
+  },
+};
+
+export function t(lang, key, vars = {}) {
+  const l = STRINGS[lang] ? lang : 'en';
+  const raw = (STRINGS[l][key] ?? STRINGS.en[key] ?? key);
+  return raw.replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? `{${k}}`));
+}

@@ -175,8 +175,14 @@ def create_app():
             peridot_version = None
 
         host = os.environ.get("COMPUTERNAME") or os.environ.get("HOSTNAME") or ""
+        language = None
         try:
             import peridot as peridot_mod  # type: ignore
+
+            try:
+                language = (peridot_mod.load_settings() or {}).get("language")
+            except Exception:
+                language = None
 
             presets = []
             for k, v in getattr(peridot_mod, "PRESET_LIBRARY", {}).items():
@@ -196,6 +202,7 @@ def create_app():
         return {
             "version": peridot_version,
             "host": host,
+            "language": language,
             "presets": sorted(presets, key=lambda p: p.get("key") or ""),
         }
 

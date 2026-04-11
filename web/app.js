@@ -1,8 +1,11 @@
+import { t } from './i18n.js';
+
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 const state = {
   route: 'home',
+  lang: 'en',
   preset: null,
   pack: {
     name: '',
@@ -37,6 +40,10 @@ async function api(path, opts={}) {
 function clampStr(s, n=64) {
   if (!s) return '';
   return s.length > n ? s.slice(0, n-1) + '…' : s;
+}
+
+function toastKey(key, vars={}, kind='info') {
+  return toast(t(state.lang, key, vars), kind);
 }
 
 function toast(msg, kind='info') {
@@ -174,7 +181,7 @@ function renderPackWizard() {
       if (spec && Array.isArray(spec.paths) && !state.pack.paths.length) {
         state.pack.paths = spec.paths;
       }
-      toast(`Preset: ${p.key}`);
+      toastKey('toast.preset', { preset: p.key });
       renderPackWizard();
     });
     grid.appendChild(btn);
@@ -203,7 +210,11 @@ function renderPackWizard() {
     `;
     row.querySelector('input').addEventListener('change', (e) => {
       state.pack.sensitiveAllow[item.path] = !!e.target.checked;
-      toast(state.pack.sensitiveAllow[item.path] ? `Including ${item.path}` : `Excluding ${item.path}`, state.pack.sensitiveAllow[item.path] ? 'warn' : 'info');
+      if (state.pack.sensitiveAllow[item.path]) {
+        toastKey('toast.includingSensitiveOne', { path: item.path }, 'warn');
+      } else {
+        toastKey('toast.excludingSensitiveOne', { path: item.path }, 'info');
+      }
       renderPackWizard();
     });
     sbox.appendChild(row);
@@ -217,14 +228,14 @@ async function startPackJob() {
   const name = ($('#packName').value || '').trim();
   const paths = ($('#packPaths').value || '').split(',').map(s => s.trim()).filter(Boolean);
   const output = ($('#packOutput').value || '').trim();
-  if (!name) return toast('Bundle name required', 'error');
+  if (!name) return toastKey('toast.nameRequired', {}, 'error');
   state.pack.name = name;
   state.pack.paths = paths;
   state.pack.output = output;
 
   $('#packRunBtn').disabled = true;
   $('#packRunBtn').classList.add('opacity-60');
-  $('#packRunStatus').textContent = 'starting…';
+  $('#packRunStatus').textContent = t(state.lang, 'status.starting');
 
   try {
     // Convert sensitive toggles into excludes (default exclude sensitive paths).
@@ -258,12 +269,12 @@ async function startPackJob() {
           } else if (p && p.type === 'scan_done') {
             $('#packRunStatus').textContent = `scanned · ${p.files || 0} files`;
           } else if (p && p.type === 'pack_done') {
-            $('#packRunStatus').textContent = 'finalizing…';
+            $('#packRunStatus').textContent = t(state.lang, 'status.finalizing');
           }
 
           $('#packJob').textContent = JSON.stringify(j, null, 2);
-          if (j.status === 'done') { toast('Pack completed', 'info'); es.close(); resolve(); }
-          if (j.status === 'error') { toast('Pack failed: ' + (j.error||''), 'error'); es.close(); resolve(); }
+          if (j.status === 'done') { toastKey('toast.packCompleted', {}, 'info'); es.close(); resolve(); }
+          if (j.status === 'error') { toastKey('toast.packFailed', { err: (j.error||'') }, 'error'); es.close(); resolve(); }
         };
         es.onerror = () => {
           es.close();
@@ -297,8 +308,15 @@ async function boot() {
   // meta
   try {
     state.meta = await api('/api/meta');
+    state.lang = (state.meta.language || 'en').toLowerCase();
     // meta.version is raw `peridot --version` output (e.g. "peridot 0.4.7")
     $('#metaVersion').textContent = state.meta.version || 'unknown';
+
+    // apply translations
+    $$('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      if (key) el.textContent = t(state.lang, key);
+    });
   } catch {
     // ok
   }
@@ -336,13 +354,13 @@ async function boot() {
     // entering sensitive step: run scan
     if (v === 3) {
       try {
-        toast('Scanning…');
+        toastKey('toast.scan');
         state.pack.scan = await api('/api/pack/scan', { method: 'POST', body: JSON.stringify({ preset: state.preset, paths: state.pack.paths }) });
         // initialize sensitive allow map (default exclude)
         state.pack.sensitiveAllow = {};
         for (const p of (state.pack.scan.sensitive || [])) state.pack.sensitiveAllow[p] = false;
       } catch (e) {
-        toast('Scan failed: ' + e, 'error');
+        toastKey('toast.scanFailed', { err: String(e) }, 'error');
       }
     }
 
@@ -354,12 +372,12 @@ async function boot() {
   // sensitive bulk actions
   $('#sensExcludeAll')?.addEventListener('click', () => {
     for (const item of state.pack.sensitive) state.pack.sensitiveAllow[item.path] = false;
-    toast('Excluded all sensitive paths');
+    toastKey('toast.excludedAllSensitive');
     renderPackWizard();
   });
   $('#sensIncludeAll')?.addEventListener('click', () => {
     for (const item of state.pack.sensitive) state.pack.sensitiveAllow[item.path] = true;
-    toast('Including all sensitive paths (not recommended)', 'warn');
+    toastKey('toast.includingAllSensitive', {}, 'warn');
     renderPackWizard();
   });
 
