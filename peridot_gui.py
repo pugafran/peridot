@@ -273,14 +273,20 @@ def create_app():
         preset = str(payload.get("preset") or "").strip()
         name = str(payload.get("name") or "")
         paths = payload.get("paths") or []
+        excludes = payload.get("excludes") or []
+
         if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
             raise HTTPException(status_code=400, detail="paths must be a list of strings")
+        if not isinstance(excludes, list) or not all(isinstance(p, str) for p in excludes):
+            raise HTTPException(status_code=400, detail="excludes must be a list of strings")
         if not name:
             raise HTTPException(status_code=400, detail="name is required")
 
         # If preset is provided, pass it through and let peridot resolve defaults.
         out = payload.get("output")
         args = ["pack", name, *paths, "--json", "--yes"]
+        for pat in excludes:
+            args.extend(["--exclude", pat])
         if preset:
             args.extend(["--preset", preset])
         if out:

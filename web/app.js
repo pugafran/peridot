@@ -8,8 +8,8 @@ const state = {
     name: '',
     paths: [],
     output: '',
-    includeSensitive: false,
     sensitive: [],
+    sensitiveAllow: {},
     excluded: [],
     scan: null,
     jobId: null,
@@ -190,19 +190,21 @@ function renderPackWizard() {
   for (const item of sensitive) {
     const row = document.createElement('div');
     row.className = 'flex items-center justify-between gap-3 px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/40';
+    const allowed = !!state.pack.sensitiveAllow[item.path];
     row.innerHTML = `
       <div>
         <div class="text-sm text-slate-200 font-mono">${item.path}</div>
         <div class="text-xs text-slate-400">${item.reason}</div>
       </div>
       <label class="inline-flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" class="accent-emerald-500" ${state.pack.includeSensitive ? 'checked' : ''} />
-        <span class="text-xs text-slate-300">include</span>
+        <input type="checkbox" class="accent-emerald-500" ${allowed ? 'checked' : ''} />
+        <span class="text-xs ${allowed ? 'text-emerald-200' : 'text-slate-300'}">${allowed ? 'include' : 'exclude'}</span>
       </label>
     `;
     row.querySelector('input').addEventListener('change', (e) => {
-      state.pack.includeSensitive = !!e.target.checked;
-      toast(state.pack.includeSensitive ? 'Including sensitive paths (not recommended)' : 'Excluding sensitive paths (recommended)', state.pack.includeSensitive?'warn':'info');
+      state.pack.sensitiveAllow[item.path] = !!e.target.checked;
+      toast(state.pack.sensitiveAllow[item.path] ? `Including ${item.path}` : `Excluding ${item.path}`, state.pack.sensitiveAllow[item.path] ? 'warn' : 'info');
+      renderPackWizard();
     });
     sbox.appendChild(row);
   }
@@ -225,7 +227,15 @@ async function startPackJob() {
   $('#packRunStatus').textContent = 'starting…';
 
   try {
-    const body = { name, paths, preset: state.preset };
+    // Convert sensitive toggles into excludes (default exclude sensitive paths).
+    const excludes = [];
+    for (const sp of (state.pack.scan?.sensitive || [])) {
+      if (!state.pack.sensitiveAllow[sp]) {
+        excludes.push(sp);
+      }
+    }
+
+    const body = { name, paths, preset: state.preset, excludes };
     if (output) body.output = output;
     const r = await api('/api/pack', { method: 'POST', body: JSON.stringify(body) });
     state.pack.jobId = r.job_id;
@@ -328,6 +338,9 @@ async function boot() {
       try {
         toast('Scanning…');
         state.pack.scan = await api('/api/pack/scan', { method: 'POST', body: JSON.stringify({ preset: state.preset, paths: state.pack.paths }) });
+        // initialize sensitive allow map (default exclude)
+        state.pack.sensitiveAllow = {};
+        for (const p of (state.pack.scan.sensitive || [])) state.pack.sensitiveAllow[p] = false;
       } catch (e) {
         toast('Scan failed: ' + e, 'error');
       }
@@ -337,6 +350,18 @@ async function boot() {
     renderPackWizard();
   });
   $('#packRunBtn').addEventListener('click', () => startPackJob());
+
+  // sensitive bulk actions
+  $('#sensExcludeAll')?.addEventListener('click', () => {
+    for (const item of state.pack.sensitive) state.pack.sensitiveAllow[item.path] = false;
+    toast('Excluded all sensitive paths');
+    renderPackWizard();
+  });
+  $('#sensIncludeAll')?.addEventListener('click', () => {
+    for (const item of state.pack.sensitive) state.pack.sensitiveAllow[item.path] = true;
+    toast('Including all sensitive paths (not recommended)', 'warn');
+    renderPackWizard();
+  });
 
   render();
 }
