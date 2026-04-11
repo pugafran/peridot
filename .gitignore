@@ -1,7 +1,9 @@
 .DS_Store
 .venv/
+.pytest_cache/
 __pycache__/
 peridot_cli.egg-info/
+PR_TANQUETA_AGENT.md
 *.pyc
 *.pyo
 *.peridot
