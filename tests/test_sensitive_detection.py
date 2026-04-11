@@ -22,6 +22,8 @@ def test_detect_sensitive_entries_flags_common_secret_files() -> None:
         _entry("work", ".ssh\\config.d\\work"),
         _entry("config", ".aws/config"),
         _entry("credentials", ".aws/credentials"),
+        _entry(".git-credentials", ".git-credentials"),
+        _entry("config.json", ".docker/config.json"),
         _entry("my_token.txt", "secrets/my_token.txt"),
         _entry("config.json", "token/config.json"),
         _entry("creds", "credentials.json"),
@@ -47,6 +49,7 @@ def test_detect_sensitive_entries_does_not_flag_generic_config_files() -> None:
         _entry("config", "app/config"),
         _entry("config", "config"),
         _entry("config.yaml", "config.yaml"),
+        _entry("config.json", "app/config.json"),
     ]
 
     sensitive = detect_sensitive_entries(entries)

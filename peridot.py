@@ -1841,7 +1841,16 @@ def _is_sensitive_path(name: str, path_str: str) -> bool:
     """
 
     # Exact dotfiles / well-known filenames.
-    exact_names = {".env", ".npmrc", ".netrc", ".pypirc", "known_hosts", "authorized_keys"}
+    # Keep this list focused to avoid false positives.
+    exact_names = {
+        ".env",
+        ".npmrc",
+        ".netrc",
+        ".pypirc",
+        ".git-credentials",
+        "known_hosts",
+        "authorized_keys",
+    }
     if name in exact_names:
         return True
 
@@ -1854,6 +1863,13 @@ def _is_sensitive_path(name: str, path_str: str) -> bool:
         or path_norm == ".ssh/config"
         or path_norm.endswith("/.aws/config")
         or path_norm == ".aws/config"
+    ):
+        return True
+
+    # Docker credential store.
+    # https://docs.docker.com/engine/reference/commandline/login/#credentials-store
+    if name == "config.json" and (
+        path_norm.endswith("/.docker/config.json") or path_norm == ".docker/config.json"
     ):
         return True
 
