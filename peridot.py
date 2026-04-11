@@ -11,13 +11,17 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import shlex
 import socket
 import stat
 import subprocess
 import sys
+import time
 import unicodedata
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
@@ -148,6 +152,10 @@ DEFAULT_SETTINGS = {
     "compression_level": DEFAULT_COMPRESSION_LEVEL,
     "jobs": DEFAULT_JOBS,
     "language": "en",
+    # Update checks
+    "update_check_enabled": True,
+    "update_check_last_ts": 0,
+    "update_check_interval_hours": 24,
 }
 ENCRYPTION_ALGORITHM = "aes-gcm"
 INCOMPRESSIBLE_SUFFIXES = {
@@ -370,6 +378,11 @@ TRANSLATIONS = {
         "Tip: activa el entorno virtual con '{cmd}'.": "Tip: activate the virtualenv with '{cmd}'.",
         "Tip: activa el entorno virtual con '. .venv/bin/activate'.": "Tip: activate the virtualenv with '. .venv/bin/activate'.",
         "Tip: tu idioma del sistema parece espanol. Puedes cambiar la UI/CLI de Peridot con PERIDOT_LANG=es o desde la UI de Settings.": "Tip: your system language looks Spanish. You can switch Peridot UI/CLI with PERIDOT_LANG=es or via the Settings UI.",
+        "Actualizacion disponible: {latest} (instalada: {current}). Ejecuta: {cmd}": "Update available: {latest} (installed: {current}). Run: {cmd}",
+        "Actualiza peridot-cli usando pip": "Update peridot-cli using pip",
+        "Actualizar peridot-cli a la ultima version? [y/N] ": "Update peridot-cli to the latest version? [y/N] ",
+        "No se encontro pip en este Python. Instala pip o usa tu gestor de paquetes.": "pip was not found for this Python. Install pip or use your package manager.",
+        "Fallo al actualizar peridot-cli (exit={code}).": "peridot-cli update failed (exit={code}).",
         "Llavero": "Keyring",
         "Clave disponible en": "Key available at",
     }
@@ -583,6 +596,90 @@ def venv_activation_hint() -> str | None:
         return None
 
 
+def parse_simple_version(value: str) -> tuple[int, int, int] | None:
+    """Parse a simple X.Y.Z version string.
+
+    We intentionally avoid external deps (packaging). If parsing fails, return None.
+    """
+
+    m = re.match(r"^(\d+)\.(\d+)\.(\d+)", (value or "").strip())
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+
+def fetch_latest_pypi_version(package: str = "peridot-cli") -> str | None:
+    url = f"https://pypi.org/pypi/{package}/json"
+    req = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": f"peridot/{APP_VERSION}"})
+    try:
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        version = str(payload.get("info", {}).get("version") or "").strip()
+        return version or None
+    except (OSError, urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError):
+        return None
+
+
+def should_check_for_updates(settings: dict, *, now_ts: int | None = None) -> bool:
+    if os.environ.get("PERIDOT_UPDATE_CHECK", "").strip() in {"0", "false", "no", "off"}:
+        return False
+
+    if not bool(settings.get("update_check_enabled", True)):
+        return False
+
+    now = int(now_ts if now_ts is not None else time.time())
+    last = int(settings.get("update_check_last_ts") or 0)
+    interval_h = sanitize_update_check_interval_hours(settings.get("update_check_interval_hours"))
+    return (now - last) >= (interval_h * 3600)
+
+
+def maybe_suggest_self_update(args: argparse.Namespace) -> None:
+    # Avoid noise in machine-readable outputs / non-interactive contexts.
+    if bool(getattr(args, "json", False)):
+        return
+    if os.environ.get("CI"):
+        return
+
+    try:
+        settings = load_settings()
+    except SystemExit:
+        return
+
+    if not should_check_for_updates(settings):
+        return
+
+    latest = fetch_latest_pypi_version("peridot-cli")
+    if not latest:
+        return
+
+    current = str(APP_VERSION)
+    parsed_latest = parse_simple_version(latest)
+    parsed_current = parse_simple_version(current)
+    if not parsed_latest or not parsed_current:
+        return
+
+    # Record the check time best-effort (don't fail the command).
+    try:
+        settings["update_check_last_ts"] = int(time.time())
+        save_settings(settings)
+    except Exception:
+        pass
+
+    if parsed_latest <= parsed_current:
+        return
+
+    cmd = install_hint("-U peridot-cli")
+    sys.stderr.write(
+        trf(
+            "Actualizacion disponible: {latest} (instalada: {current}). Ejecuta: {cmd}",
+            latest=latest,
+            current=current,
+            cmd=cmd,
+        )
+        + "\n"
+    )
+
+
 def localize_parser(parser: argparse.ArgumentParser) -> None:
     parser.description = tr(parser.description) if parser.description else parser.description
     for action in parser._actions:
@@ -702,6 +799,25 @@ def sanitize_language(value: object) -> str:
         return "en"
 
     return DEFAULT_SETTINGS["language"]
+
+
+def sanitize_update_check_enabled(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    raw = str(value or "").strip().lower()
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    return bool(DEFAULT_SETTINGS["update_check_enabled"])
+
+
+def sanitize_update_check_interval_hours(value: object) -> int:
+    try:
+        hours = int(value)
+    except (TypeError, ValueError):
+        hours = int(DEFAULT_SETTINGS["update_check_interval_hours"])
+    return max(1, min(24 * 30, hours))
 
 
 def slugify(value: str | None, max_length: int = 64) -> str:
@@ -1041,6 +1157,12 @@ def load_settings(settings_path: Path = DEFAULT_SETTINGS_STORE) -> dict:
     data["compression_level"] = sanitize_compression_level(data.get("compression_level"))
     data["jobs"] = sanitize_jobs(data.get("jobs"))
     data["language"] = sanitize_language(data.get("language"))
+    data["update_check_enabled"] = sanitize_update_check_enabled(data.get("update_check_enabled"))
+    data["update_check_interval_hours"] = sanitize_update_check_interval_hours(data.get("update_check_interval_hours"))
+    try:
+        data["update_check_last_ts"] = int(data.get("update_check_last_ts") or 0)
+    except (TypeError, ValueError):
+        data["update_check_last_ts"] = 0
     return data
 
 
@@ -3915,6 +4037,27 @@ def cmd_ui(args) -> None:
         Prompt.ask(tr("Press enter to return to the command center"), default="")
 
 
+def cmd_self_update(args) -> None:
+    """Update peridot-cli via pip using the current interpreter.
+
+    This command is opt-in and requires confirmation unless --yes is passed.
+    """
+
+    if not getattr(args, "yes", False) and sys.stdin.isatty():
+        prompt = tr("Actualizar peridot-cli a la ultima version? [y/N] ")
+        ans = input(prompt).strip().lower()
+        if ans not in {"y", "yes", "s", "si"}:
+            return
+
+    cmd = [sys.executable, "-m", "pip", "install", "-U", "peridot-cli"]
+    try:
+        subprocess.check_call(cmd)
+    except FileNotFoundError:
+        die(tr("No se encontro pip en este Python. Instala pip o usa tu gestor de paquetes."))
+    except subprocess.CalledProcessError as exc:
+        die(trf("Fallo al actualizar peridot-cli (exit={code}).", code=exc.returncode))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="peridot",
@@ -4005,6 +4148,10 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser = subparsers.add_parser("doctor", help="Diagnostico del entorno local")
     doctor_parser.add_argument("--json", action="store_true", help="Salida estructurada en JSON")
     doctor_parser.set_defaults(func=cmd_doctor)
+
+    update_parser = subparsers.add_parser("self-update", help="Actualiza peridot-cli usando pip")
+    update_parser.add_argument("-y", "--yes", action="store_true", help="No pedir confirmacion")
+    update_parser.set_defaults(func=cmd_self_update)
 
     share_parser = subparsers.add_parser("share", help="Exporta una ficha CLI-friendly del bundle")
     share_parser.add_argument("package", type=Path, help="Ruta del paquete .peridot")
@@ -4174,6 +4321,9 @@ def main(argv: Iterable[str] | None = None) -> None:
             )
             + "\n"
         )
+
+    # Best-effort update check (non-fatal, cached).
+    maybe_suggest_self_update(args)
 
     # Rich is required for the full TUI/pretty output, but JSON modes should
     # still work in constrained environments.
