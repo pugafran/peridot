@@ -116,6 +116,23 @@ def test_install_hint_falls_back_to_sys_executable(tmp_path, monkeypatch):
     assert peridot.sys.executable in hint
 
 
+def test_install_hint_quotes_sys_executable_when_it_contains_spaces(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(peridot.sys, "executable", "/opt/My Python/bin/python")
+    hint = peridot.install_hint(".")
+    assert "'/opt/My Python/bin/python'" in hint
+
+
+def test_install_hint_quotes_windows_sys_executable_with_double_quotes(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(peridot.sys, "executable", "C:/Program Files/Python/python.exe")
+    monkeypatch.setattr(peridot.platform, "system", lambda: "Windows")
+    hint = peridot.install_hint(".")
+    assert '"C:/Program Files/Python/python.exe"' in hint
+
+
 def test_venv_activation_hint_prefers_windows_activate_script(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".venv").mkdir()

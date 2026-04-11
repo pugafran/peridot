@@ -534,6 +534,10 @@ def install_hint(target: str) -> str:
     We prefer the repo virtualenv (./.venv) when present.
 
     On Windows, virtualenvs use .venv/Scripts/python(.exe).
+
+    Notes:
+        sys.executable can contain spaces (e.g. "Program Files"). When we
+        fall back to it, we quote it to make the command copy/paste-friendly.
     """
 
     venv_dir = Path(".venv")
@@ -549,7 +553,15 @@ def install_hint(target: str) -> str:
     # Fall back to the current interpreter so the suggestion matches the
     # environment Peridot is running in.
     python = getattr(sys, "executable", None) or "python"
-    return f"{python} -m pip install {target}"
+    python_str = str(python)
+
+    if any(ch.isspace() for ch in python_str):
+        if normalize_os_name() == "windows":
+            python_str = f'"{python_str}"'
+        else:
+            python_str = shlex.quote(python_str)
+
+    return f"{python_str} -m pip install {target}"
 
 
 def venv_activation_hint() -> str | None:
