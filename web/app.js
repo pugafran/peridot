@@ -287,6 +287,7 @@ async function boot() {
   // meta
   try {
     state.meta = await api('/api/meta');
+    // meta.version is raw `peridot --version` output (e.g. "peridot 0.4.7")
     $('#metaVersion').textContent = state.meta.version || 'unknown';
   } catch {
     // ok

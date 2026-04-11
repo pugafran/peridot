@@ -166,9 +166,11 @@ def create_app():
     def meta() -> dict[str, Any]:
         # Minimal metadata for the GUI.
         # Presets are static in peridot.py, so we expose them here so the UI can render cards.
+        # Determine peridot version from `peridot --version` (stable, lightweight).
         try:
-            out = _run_peridot_json(["doctor", "--json"])
-            peridot_version = out.get("peridot_version")
+            exe = os.environ.get("PERIDOT_EXE") or "peridot"
+            p = subprocess.run([exe, "--version"], capture_output=True, text=True)
+            peridot_version = (p.stdout or "").strip() if p.returncode == 0 else None
         except Exception:
             peridot_version = None
 
@@ -198,14 +200,14 @@ def create_app():
         }
 
     @app.get("/api/doctor")
-    def doctor() -> dict[str, Any]:
+    def doctor() -> Any:
         try:
             return _run_peridot_json(["doctor", "--json"])
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc))
 
     @app.get("/api/settings")
-    def settings() -> dict[str, Any]:
+    def settings() -> Any:
         try:
             return _run_peridot_json(["settings", "--json"])
         except Exception as exc:
