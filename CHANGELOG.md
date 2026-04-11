@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.5 - 2026-04-11
+
+- pack: safer defaults (exclude common dev dirs, VCS metadata) and improved sensitive-path detection (SSH/AWS/Docker/Git).
+- cli: `init --json` output; ensure `--json` outputs are clean (no locale tips in stdout).
+- i18n/windows: better locale normalization + `PERIDOT_LANG=auto/system`; improved shell detection in env.
+- doctor: report zstandard (zstd) availability; improve dependency hints and error output without Rich.
+
 ## 0.4.4 - 2026-04-09
 
 - pack: skip unreadable/protected files instead of crashing (e.g. `~/.ssh/config` on Windows); record skipped files in manifest and expose `skipped` in `pack --json`.
