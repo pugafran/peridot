@@ -369,6 +369,7 @@ TRANSLATIONS = {
         "Instalala con '{cmd}'.": "Install it with '{cmd}'.",
         "Tip: activa el entorno virtual con '{cmd}'.": "Tip: activate the virtualenv with '{cmd}'.",
         "Tip: activa el entorno virtual con '. .venv/bin/activate'.": "Tip: activate the virtualenv with '. .venv/bin/activate'.",
+        "Tip: tu idioma del sistema parece espanol. Puedes cambiar la UI/CLI de Peridot con PERIDOT_LANG=es o desde la UI de Settings.": "Tip: your system language looks Spanish. You can switch Peridot UI/CLI with PERIDOT_LANG=es or via the Settings UI.",
     }
 }
 
@@ -4122,7 +4123,10 @@ def main(argv: Iterable[str] | None = None) -> None:
     # Avoid polluting machine-readable output modes.
     if should_suggest_spanish and not getattr(args, "json", False):
         sys.stderr.write(
-            "Tip: your system language looks Spanish. You can switch Peridot UI/CLI with PERIDOT_LANG=es or via the Settings UI.\n"
+            tr(
+                "Tip: tu idioma del sistema parece espanol. Puedes cambiar la UI/CLI de Peridot con PERIDOT_LANG=es o desde la UI de Settings."
+            )
+            + "\n"
         )
 
     # Rich is required for the full TUI/pretty output, but JSON modes should
