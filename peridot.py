@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, ThreadPoolExecutor, wait
+import difflib
 import fnmatch
 import gzip
 import hashlib
@@ -249,6 +250,7 @@ TRANSLATIONS = {
         "0 = mas rapido y mas grande | 9 = mas lento y mas pequeno": "0 = faster and bigger | 9 = slower and smaller",
         "Dot Presets": "Dot Presets",
         "Preset desconocido: {preset}. Disponibles: {available}": "Unknown preset: {preset}. Available: {available}",
+        "Quizás quisiste decir: {suggestions}": "Did you mean: {suggestions}",
         "Config Catalog": "Config Catalog",
         "Checkbox UI no disponible:": "Checkbox UI unavailable:",
         "esta sesion no tiene un TTY interactivo real.": "this session does not have a real interactive TTY.",
@@ -1589,8 +1591,16 @@ def apply_preset(args, preset_name: str, force_paths: bool = False) -> None:
         return
     preset = PRESET_LIBRARY.get(preset_name)
     if not preset:
-        available = ", ".join(sorted(PRESET_LIBRARY))
-        die(trf("Preset desconocido: {preset}. Disponibles: {available}", preset=preset_name, available=available))
+        candidates = sorted(PRESET_LIBRARY)
+        available = ", ".join(candidates)
+        suggestions = difflib.get_close_matches(preset_name, candidates, n=3, cutoff=0.6)
+        extra = ""
+        if suggestions:
+            extra = " " + trf("Quizás quisiste decir: {suggestions}", suggestions=", ".join(suggestions))
+        die(
+            trf("Preset desconocido: {preset}. Disponibles: {available}", preset=preset_name, available=available)
+            + extra
+        )
 
     args.preset = preset_name
     if not args.name:
