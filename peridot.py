@@ -3517,9 +3517,7 @@ def interactive_settings_editor(settings_path: Path = DEFAULT_SETTINGS_STORE) ->
 
 def cmd_settings(args) -> None:
     settings_path = getattr(args, "settings_path", DEFAULT_SETTINGS_STORE)
-    if getattr(args, "show", False):
-        render_settings_table(load_settings(settings_path))
-        return
+    json_mode = bool(getattr(args, "json", False))
 
     if getattr(args, "set", []):
         settings = load_settings(settings_path)
@@ -3539,8 +3537,23 @@ def cmd_settings(args) -> None:
                 die(f"Setting no soportado: {key}")
         save_settings(settings, settings_path)
         set_current_language(settings["language"])
+
+        if json_mode:
+            print(json.dumps({"settings_path": str(settings_path), "settings": settings}, indent=2, sort_keys=True))
+            return
+
         render_settings_table(settings)
         console.print(f"[bold green]{trf('Settings updated {path}', path=settings_path)}[/bold green]")
+        return
+
+    # In JSON mode, default to showing the effective settings.
+    if json_mode:
+        settings = load_settings(settings_path)
+        print(json.dumps({"settings_path": str(settings_path), "settings": settings}, indent=2, sort_keys=True))
+        return
+
+    if getattr(args, "show", False):
+        render_settings_table(load_settings(settings_path))
         return
 
     interactive_settings_editor(settings_path)
@@ -4255,6 +4268,7 @@ def build_parser() -> argparse.ArgumentParser:
     settings_parser.add_argument("--show", action="store_true", help="Muestra los settings efectivos")
     settings_parser.add_argument("--set", action="append", default=[], help="Actualiza un setting con clave=valor. Repetible.")
     settings_parser.add_argument("--settings-path", type=Path, default=DEFAULT_SETTINGS_STORE, help="Ruta del store de settings")
+    settings_parser.add_argument("--json", action="store_true", help="Structured JSON output (no banner/tables)")
     settings_parser.set_defaults(func=cmd_settings)
 
     keygen_parser = subparsers.add_parser("keygen", help="Genera o muestra la clave activa")
