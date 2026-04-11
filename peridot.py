@@ -370,6 +370,8 @@ TRANSLATIONS = {
         "Tip: activa el entorno virtual con '{cmd}'.": "Tip: activate the virtualenv with '{cmd}'.",
         "Tip: activa el entorno virtual con '. .venv/bin/activate'.": "Tip: activate the virtualenv with '. .venv/bin/activate'.",
         "Tip: tu idioma del sistema parece espanol. Puedes cambiar la UI/CLI de Peridot con PERIDOT_LANG=es o desde la UI de Settings.": "Tip: your system language looks Spanish. You can switch Peridot UI/CLI with PERIDOT_LANG=es or via the Settings UI.",
+        "Llavero": "Keyring",
+        "Clave disponible en": "Key available at",
     }
 }
 
@@ -2528,11 +2530,11 @@ def check_platform_compatibility(manifest: dict) -> tuple[bool, str]:
 
 def cmd_keygen(args) -> None:
     key = load_key(args.key, create=True)
-    fingerprint = hashlib.sha256(key).hexdigest()[:16]
+    fingerprint = fingerprint_key(key)
     console.print(
         Panel(
-            f"{'Key available at' if CURRENT_LANGUAGE == 'en' else 'Clave disponible en'} [bold]{args.key}[/bold]\nFingerprint: [cyan]{fingerprint}[/cyan]",
-            title=f"[bold bright_green]{'Keyring' if CURRENT_LANGUAGE == 'en' else 'Keyring'}[/bold bright_green]",
+            f"{tr('Clave disponible en')} [bold]{args.key}[/bold]\nFingerprint: [cyan]{fingerprint}[/cyan]",
+            title=f"[bold bright_green]{tr('Llavero')}[/bold bright_green]",
             border_style="green",
         )
     )

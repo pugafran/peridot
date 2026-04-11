@@ -19,3 +19,5 @@ def test_tr_english_translation_known_keys():
         )
         == "Tip: your system language looks Spanish. You can switch Peridot UI/CLI with PERIDOT_LANG=es or via the Settings UI."
     )
+    assert peridot.tr("Llavero") == "Keyring"
+    assert peridot.tr("Clave disponible en") == "Key available at"
