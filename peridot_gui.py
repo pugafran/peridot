@@ -71,7 +71,7 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
 
 def create_app():
     from fastapi import FastAPI, HTTPException
-    from fastapi.responses import FileResponse, HTMLResponse
+    from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
     app = FastAPI(title="Peridot GUI (experimental)")
 
@@ -100,17 +100,28 @@ def create_app():
         except Exception:
             peridot_version = None
 
+        host = os.environ.get("COMPUTERNAME") or os.environ.get("HOSTNAME") or ""
         try:
             import peridot as peridot_mod  # type: ignore
 
             presets = []
             for k, v in getattr(peridot_mod, "PRESET_LIBRARY", {}).items():
-                presets.append({"key": k, **{kk: v.get(kk) for kk in ("description", "platform", "shell", "tags")}})
+                presets.append(
+                    {
+                        "key": k,
+                        "description": v.get("description"),
+                        "platform": v.get("platform"),
+                        "shell": v.get("shell"),
+                        "tags": v.get("tags"),
+                        "paths": v.get("paths"),
+                    }
+                )
         except Exception:
             presets = []
 
         return {
             "version": peridot_version,
+            "host": host,
             "presets": sorted(presets, key=lambda p: p.get("key") or ""),
         }
 
@@ -122,8 +133,52 @@ def create_app():
     def settings() -> dict[str, Any]:
         return _run_peridot_json(["settings", "--json"])
 
+    def _expand_path(p: str) -> str:
+        return str(Path(os.path.expandvars(os.path.expanduser(p))).resolve())
+
+    @app.post("/api/pack/scan")
+    def pack_scan(payload: dict[str, Any]) -> dict[str, Any]:
+        """Scan input paths and return a summary + sensitive paths.
+
+        This runs in-process by importing peridot, so we can surface sensitive
+        warnings before creating a bundle.
+        """
+
+        preset = str(payload.get("preset") or "").strip()
+        paths = payload.get("paths") or []
+        if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
+            raise HTTPException(status_code=400, detail="paths must be a list of strings")
+
+        try:
+            import peridot as peridot_mod  # type: ignore
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"cannot import peridot: {exc}")
+
+        # If preset is provided, use its default paths when no paths are supplied.
+        if preset and not paths:
+            spec = getattr(peridot_mod, "PRESET_LIBRARY", {}).get(preset)
+            if not spec:
+                raise HTTPException(status_code=400, detail=f"unknown preset: {preset}")
+            paths = list(spec.get("paths") or [])
+
+        expanded = [_expand_path(p) for p in paths]
+
+        entries = peridot_mod.collect_files([Path(p) for p in expanded])
+        entries = peridot_mod.filter_entries(entries, [])
+        sensitive = peridot_mod.detect_sensitive_entries(entries)
+
+        total_bytes = int(sum(getattr(e, "size", 0) for e in entries))
+        return {
+            "paths": paths,
+            "expanded_paths": expanded,
+            "files": len(entries),
+            "bytes": total_bytes,
+            "sensitive": sorted({e.relative_path.replace("\\", "/") for e in sensitive}),
+        }
+
     @app.post("/api/pack")
     def pack(payload: dict[str, Any]) -> dict[str, Any]:
+        preset = str(payload.get("preset") or "").strip()
         name = str(payload.get("name") or "")
         paths = payload.get("paths") or []
         if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
@@ -131,8 +186,11 @@ def create_app():
         if not name:
             raise HTTPException(status_code=400, detail="name is required")
 
+        # If preset is provided, pass it through and let peridot resolve defaults.
         out = payload.get("output")
         args = ["pack", name, *paths, "--json", "--yes"]
+        if preset:
+            args.extend(["--preset", preset])
         if out:
             args.extend(["--output", str(out)])
 
@@ -158,6 +216,46 @@ def create_app():
             "result": job.result,
             "error": job.error,
         }
+
+    @app.get("/api/jobs/{job_id}/events")
+    def job_events(job_id: str):
+        """Server-Sent Events stream for job status.
+
+        This is a simple streaming layer (not true per-file progress yet), but it
+        makes the UI feel alive.
+        """
+
+        job = _JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="job not found")
+
+        def gen():
+            last_status = None
+            while True:
+                j = _JOBS.get(job_id)
+                if not j:
+                    yield "event: done\ndata: {}\n\n"
+                    return
+
+                payload = {
+                    "id": j.id,
+                    "kind": j.kind,
+                    "status": j.status,
+                    "created_ts": j.created_ts,
+                    "started_ts": j.started_ts,
+                    "finished_ts": j.finished_ts,
+                    "result": j.result,
+                    "error": j.error,
+                }
+
+                yield f"data: {json.dumps(payload)}\n\n"
+                if j.status in {"done", "error"}:
+                    return
+
+                # basic heartbeat
+                time.sleep(0.8)
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
 
     return app
 

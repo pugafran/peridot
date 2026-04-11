@@ -11,6 +11,7 @@ const state = {
     includeSensitive: false,
     sensitive: [],
     excluded: [],
+    scan: null,
     jobId: null,
     job: null,
   },
@@ -164,16 +165,26 @@ function renderPackWizard() {
         ${(p.tags||[]).map(t => `<span class="text-[10px] px-2 py-1 rounded-full border border-slate-800 text-slate-300 bg-slate-900/30">${t}</span>`).join('')}
       </div>
     `;
-    btn.addEventListener('click', () => { state.preset = p.key; toast(`Preset: ${p.key}`); renderPackWizard(); });
+    btn.addEventListener('click', () => {
+      state.preset = p.key;
+      // Suggest defaults from preset
+      const host = (state.meta?.host || '').toLowerCase() || 'host';
+      state.pack.name = `${host}-${p.key}`.replace(/[^a-z0-9-]+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').slice(0,64) || 'bundle';
+      const spec = (state.meta?.presets||[]).find(x => x.key === p.key);
+      if (spec && Array.isArray(spec.paths) && !state.pack.paths.length) {
+        state.pack.paths = spec.paths;
+      }
+      toast(`Preset: ${p.key}`);
+      renderPackWizard();
+    });
     grid.appendChild(btn);
   }
 
-  // sensitive mock (until scan endpoint)
   const sbox = $('#sensitiveList');
   sbox.innerHTML = '';
-  const sensitive = state.pack.sensitive.length ? state.pack.sensitive : [
-    { path: '.ssh/config', reason: 'SSH config often contains hosts/users/proxy commands' },
-    { path: '.aws/credentials', reason: 'May contain cloud credentials' },
+  const sensitivePaths = state.pack.scan?.sensitive || [];
+  const sensitive = sensitivePaths.length ? sensitivePaths.map(p => ({ path: p, reason: 'Sensitive path detected' })) : [
+    { path: '.ssh/config', reason: 'Sensitive path detected' },
   ];
   state.pack.sensitive = sensitive;
   for (const item of sensitive) {
@@ -214,19 +225,41 @@ async function startPackJob() {
   $('#packRunStatus').textContent = 'starting…';
 
   try {
-    const body = { name, paths };
+    const body = { name, paths, preset: state.preset };
     if (output) body.output = output;
     const r = await api('/api/pack', { method: 'POST', body: JSON.stringify(body) });
     state.pack.jobId = r.job_id;
     $('#packRunStatus').textContent = `job ${r.job_id}`;
 
-    while (true) {
-      const j = await api(`/api/jobs/${state.pack.jobId}`);
-      state.pack.job = j;
-      $('#packJob').textContent = JSON.stringify(j, null, 2);
-      if (j.status === 'done') { toast('Pack completed', 'info'); break; }
-      if (j.status === 'error') { toast('Pack failed: ' + (j.error||''), 'error'); break; }
-      await sleep(900);
+    // SSE stream (fallback to polling if it fails)
+    try {
+      const es = new EventSource(`/api/jobs/${state.pack.jobId}/events`);
+      await new Promise((resolve) => {
+        es.onmessage = (ev) => {
+          const j = JSON.parse(ev.data);
+          state.pack.job = j;
+          $('#packJob').textContent = JSON.stringify(j, null, 2);
+          if (j.status === 'done') { toast('Pack completed', 'info'); es.close(); resolve(); }
+          if (j.status === 'error') { toast('Pack failed: ' + (j.error||''), 'error'); es.close(); resolve(); }
+        };
+        es.onerror = () => {
+          es.close();
+          resolve();
+        };
+      });
+    } catch {
+      // ignore
+    }
+
+    if (!state.pack.job || (state.pack.job.status !== 'done' && state.pack.job.status !== 'error')) {
+      while (true) {
+        const j = await api(`/api/jobs/${state.pack.jobId}`);
+        state.pack.job = j;
+        $('#packJob').textContent = JSON.stringify(j, null, 2);
+        if (j.status === 'done') { toast('Pack completed', 'info'); break; }
+        if (j.status === 'error') { toast('Pack failed: ' + (j.error||''), 'error'); break; }
+        await sleep(900);
+      }
     }
   } catch (e) {
     toast(String(e), 'error');
@@ -268,12 +301,24 @@ async function boot() {
     $('#packStep').value = String(v);
     renderPackWizard();
   });
-  $('#packNext').addEventListener('click', () => {
-    const v = Math.min(4, Number($('#packStep').value) + 1);
+  $('#packNext').addEventListener('click', async () => {
+    const current = Number($('#packStep').value);
+    const v = Math.min(4, current + 1);
     // persist fields
     state.pack.name = ($('#packName').value||'').trim();
     state.pack.paths = ($('#packPaths').value||'').split(',').map(s=>s.trim()).filter(Boolean);
     state.pack.output = ($('#packOutput').value||'').trim();
+
+    // entering sensitive step: run scan
+    if (v === 3) {
+      try {
+        toast('Scanning…');
+        state.pack.scan = await api('/api/pack/scan', { method: 'POST', body: JSON.stringify({ preset: state.preset, paths: state.pack.paths }) });
+      } catch (e) {
+        toast('Scan failed: ' + e, 'error');
+      }
+    }
+
     $('#packStep').value = String(v);
     renderPackWizard();
   });
