@@ -48,12 +48,20 @@ def require_cryptography():
 
     if AESGCM is None:
         hint = venv_activation_hint()
+        runtime = python_runtime_hint()
         pip_hint = install_hint(".")
+
+        extra_lines: list[str] = []
+        if runtime:
+            extra_lines.append(runtime)
+        if hint:
+            extra_lines.append(hint)
+
         print(
             tr("Error: falta la dependencia 'cryptography'.")
             + " "
             + trf("Instalala con '{cmd}'.", cmd=pip_hint)
-            + ("\n" + hint if hint else ""),
+            + (("\n" + "\n".join(extra_lines)) if extra_lines else ""),
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -383,6 +391,7 @@ TRANSLATIONS = {
         "Instalala con '{cmd}'.": "Install it with '{cmd}'.",
         "Tip: activa el entorno virtual con '{cmd}'.": "Tip: activate the virtualenv with '{cmd}'.",
         "Tip: activa el entorno virtual con '. .venv/bin/activate'.": "Tip: activate the virtualenv with '. .venv/bin/activate'.",
+        "Python actual: {exe} (v{ver}).": "Current Python: {exe} (v{ver}).",
         "Tip: tu idioma del sistema parece espanol. Puedes cambiar la UI/CLI de Peridot con PERIDOT_LANG=es o desde la UI de Settings.": "Tip: your system language looks Spanish. You can switch Peridot UI/CLI with PERIDOT_LANG=es or via the Settings UI.",
         "Actualizacion disponible: {latest} (instalada: {current}). Ejecuta: {cmd}": "Update available: {latest} (installed: {current}). Run: {cmd}",
         "Actualiza peridot-cli usando pip": "Update peridot-cli using pip",
@@ -598,6 +607,22 @@ def venv_activation_hint() -> str | None:
         else:
             cmd = ". .venv/bin/activate"
         return trf("Tip: activa el entorno virtual con '{cmd}'.", cmd=cmd)
+    except Exception:
+        return None
+
+
+def python_runtime_hint() -> str | None:
+    """Return a short, copy/paste-friendly hint about the current Python runtime."""
+
+    try:
+        exe = str(getattr(sys, "executable", "") or "").strip()
+        ver_info = getattr(sys, "version_info", None)
+        ver = "?"
+        if ver_info is not None:
+            ver = f"{ver_info.major}.{ver_info.minor}.{ver_info.micro}"
+        if not exe:
+            return None
+        return trf("Python actual: {exe} (v{ver}).", exe=exe, ver=ver)
     except Exception:
         return None
 
@@ -4363,12 +4388,20 @@ def main(argv: Iterable[str] | None = None) -> None:
 
     if not RICH_AVAILABLE and not json_mode:
         hint = venv_activation_hint()
+        runtime = python_runtime_hint()
         pip_hint = install_hint(".")
+
+        extra_lines: list[str] = []
+        if runtime:
+            extra_lines.append(runtime)
+        if hint:
+            extra_lines.append(hint)
+
         print(
             tr("Error: falta la dependencia 'rich'.")
             + " "
             + trf("Instalala con '{cmd}'.", cmd=pip_hint)
-            + ("\n" + hint if hint else ""),
+            + (("\n" + "\n".join(extra_lines)) if extra_lines else ""),
             file=sys.stderr,
         )
         raise SystemExit(1)
