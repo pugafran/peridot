@@ -120,6 +120,7 @@ def test_install_hint_quotes_sys_executable_when_it_contains_spaces(tmp_path, mo
     monkeypatch.chdir(tmp_path)
 
     monkeypatch.setattr(peridot.sys, "executable", "/opt/My Python/bin/python")
+    monkeypatch.setattr(peridot.platform, "system", lambda: "Linux")
     hint = peridot.install_hint(".")
     assert "'/opt/My Python/bin/python'" in hint
 
