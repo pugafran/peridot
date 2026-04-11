@@ -2707,6 +2707,35 @@ def cmd_keygen(args) -> None:
     )
 
 
+def _pack_progress_sink():
+    """Optional progress sink for pack in JSON contexts.
+
+    If PERIDOT_PROGRESS_FD is set to an integer FD number, we emit newline-
+    delimited JSON events to it.
+    """
+
+    raw = os.environ.get("PERIDOT_PROGRESS_FD")
+    if not raw:
+        return None
+    try:
+        fd = int(raw)
+    except (TypeError, ValueError):
+        return None
+
+    try:
+        f = os.fdopen(fd, "w", encoding="utf-8", buffering=1, closefd=False)
+    except Exception:
+        return None
+
+    def emit(event: dict) -> None:
+        try:
+            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+
+    return emit
+
+
 def cmd_pack(args) -> None:
     if not getattr(args, "json", False):
         print_banner()
@@ -2720,6 +2749,8 @@ def cmd_pack(args) -> None:
     paths, output = prepare_pack_inputs(args)
     if not paths:
         die(tr("No hay rutas para empaquetar. Pasa rutas explicitas o prepara tu HOME."))
+
+    progress_emit = _pack_progress_sink() if getattr(args, "json", False) else None
 
     scan_progress = None
     scan_task = None
@@ -2751,7 +2782,26 @@ def cmd_pack(args) -> None:
         scan_progress.update(scan_task, description=tr("Scanning files done"), current_path="")
         scan_progress.__exit__(None, None, None)
     if getattr(args, "json", False):
-        entries = filter_entries(collect_files(paths), args.exclude)
+        if progress_emit:
+            progress_emit({"type": "scan_start"})
+
+        count = 0
+        last_emit = 0.0
+
+        def update_scan_json(_count: int, current_path: Path) -> None:
+            nonlocal count, last_emit
+            count = int(_count)
+            now = time.time()
+            if now - last_emit >= 0.25:
+                last_emit = now
+                progress_emit({"type": "scan_progress", "files": count, "current": str(current_path)})
+
+        entries = filter_entries(
+            collect_files(paths, progress_callback=update_scan_json if progress_emit else None),
+            args.exclude,
+        )
+        if progress_emit:
+            progress_emit({"type": "scan_done", "files": len(entries)})
 
     if not entries:
         die(tr("No se encontro ningun archivo exportable."))
@@ -2814,6 +2864,16 @@ def cmd_pack(args) -> None:
             pending: dict = {}
             next_index = 1
             completed_files = 0
+            completed_bytes = 0
+
+            if progress_emit:
+                progress_emit(
+                    {
+                        "type": "pack_start",
+                        "files_total": int(len(entries)),
+                        "bytes_total": int(total_bytes),
+                    }
+                )
 
             def submit_one(index: int, entry: FileEntry) -> None:
                     payload_name = f"{index:04d}-{hashlib.sha256(entry.relative_path.encode('utf-8')).hexdigest()[:16]}.bin"
@@ -2850,6 +2910,15 @@ def cmd_pack(args) -> None:
 
                     if encrypted is None:
                         skipped_files.append(record)
+                        if progress_emit:
+                            progress_emit(
+                                {
+                                    "type": "pack_skip",
+                                    "path": record.get("path"),
+                                    "error": record.get("error"),
+                                    "skipped": int(len(skipped_files)),
+                                }
+                            )
                         if not getattr(args, "json", False):
                             console.print(
                                 f"[yellow]Warning:[/yellow] skipped unreadable file: {record.get('path')} ({record.get('error')})"
@@ -2861,6 +2930,21 @@ def cmd_pack(args) -> None:
 
                     files_manifest.append(record)
                     completed_files += 1
+                    completed_bytes += int(record.get("size") or 0)
+
+                    if progress_emit:
+                        progress_emit(
+                            {
+                                "type": "pack_progress",
+                                "files_done": int(completed_files),
+                                "files_total": int(len(entries)),
+                                "bytes_done": int(completed_bytes),
+                                "bytes_total": int(total_bytes),
+                                "path": record.get("path"),
+                                "skipped": int(len(skipped_files)),
+                            }
+                        )
+
                     if progress is not None and task is not None:
                         progress.update(
                             task,
@@ -2909,6 +2993,9 @@ def cmd_pack(args) -> None:
 
     # Atomic-ish replace.
     tmp_output.replace(output)
+
+    if progress_emit:
+        progress_emit({"type": "pack_done", "output": str(output), "skipped": int(len(skipped_files))})
 
     if getattr(args, "json", False):
         payload = {

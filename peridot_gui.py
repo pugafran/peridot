@@ -57,14 +57,66 @@ def _run_peridot_json(args: list[str]) -> dict[str, Any]:
 def _launch_job(job: Job, peridot_args: list[str]) -> None:
     job.status = "running"
     job.started_ts = time.time()
+
+    exe = os.environ.get("PERIDOT_EXE") or "peridot"
+    cmd = [exe, *peridot_args]
+
+    # Optional progress stream via PERIDOT_PROGRESS_FD.
+    r_fd, w_fd = os.pipe()
     try:
-        job.result = _run_peridot_json(peridot_args)
+        env = dict(os.environ)
+        env["PERIDOT_PROGRESS_FD"] = str(w_fd)
+
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+            pass_fds=(w_fd,),
+        )
+
+        # Close write end in parent.
+        os.close(w_fd)
+
+        progress_lines: list[dict[str, Any]] = []
+
+        def progress_reader():
+            with os.fdopen(r_fd, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        evt = json.loads(line)
+                    except Exception:
+                        continue
+                    # Keep last progress snapshot on the job.
+                    job.result = job.result or {}
+                    job.result["progress"] = evt
+
+        t = threading.Thread(target=progress_reader, daemon=True)
+        t.start()
+
+        out, err = proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError((err or out or "").strip() or f"peridot exited {proc.returncode}")
+
+        try:
+            job.result = json.loads(out)
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(f"Invalid JSON output from peridot: {exc}. Output was: {out[:400]}")
+
         job.status = "done"
     except Exception as exc:  # noqa: BLE001
         job.status = "error"
         job.error = str(exc)
     finally:
         job.finished_ts = time.time()
+        try:
+            os.close(r_fd)
+        except Exception:
+            pass
 
 
 # --- FastAPI app ---

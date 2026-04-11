@@ -238,6 +238,19 @@ async function startPackJob() {
         es.onmessage = (ev) => {
           const j = JSON.parse(ev.data);
           state.pack.job = j;
+
+          const p = j.result && j.result.progress;
+          if (p && p.type === 'pack_progress') {
+            const pct = p.bytes_total ? Math.min(100, Math.round((p.bytes_done / p.bytes_total) * 100)) : Math.min(100, Math.round((p.files_done / p.files_total) * 100));
+            $('#packRunStatus').textContent = `packing ${pct}% · ${p.files_done}/${p.files_total}`;
+          } else if (p && p.type === 'scan_progress') {
+            $('#packRunStatus').textContent = `scanning · ${p.files || 0} files`;
+          } else if (p && p.type === 'scan_done') {
+            $('#packRunStatus').textContent = `scanned · ${p.files || 0} files`;
+          } else if (p && p.type === 'pack_done') {
+            $('#packRunStatus').textContent = 'finalizing…';
+          }
+
           $('#packJob').textContent = JSON.stringify(j, null, 2);
           if (j.status === 'done') { toast('Pack completed', 'info'); es.close(); resolve(); }
           if (j.status === 'error') { toast('Pack failed: ' + (j.error||''), 'error'); es.close(); resolve(); }
