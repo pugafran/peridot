@@ -4085,19 +4085,21 @@ def main(argv: Iterable[str] | None = None) -> None:
     except Exception:
         has_settings = False
 
-    if (
+    should_suggest_spanish = (
         runtime_lang == "en"
         and not os.environ.get("PERIDOT_LANG")
         and not has_settings
         and (detect_system_language_hint() or "").startswith("es")
-    ):
-        console.print(
-            "[dim]Tip: your system language looks Spanish. You can switch Peridot UI/CLI with "
-            "PERIDOT_LANG=es or via the Settings UI.[/dim]"
-        )
+    )
 
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # Avoid polluting machine-readable output modes.
+    if should_suggest_spanish and not getattr(args, "json", False):
+        sys.stderr.write(
+            "Tip: your system language looks Spanish. You can switch Peridot UI/CLI with PERIDOT_LANG=es or via the Settings UI.\n"
+        )
 
     if not RICH_AVAILABLE:
         hint = venv_activation_hint()
