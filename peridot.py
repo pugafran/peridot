@@ -24,6 +24,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from importlib import metadata
 from pathlib import Path, PureWindowsPath
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -107,7 +108,12 @@ except ModuleNotFoundError:
 QUESTIONARY_AVAILABLE = questionary is not None and Choice is not None
 
 
-APP_VERSION = "0.4.4"
+try:
+    APP_VERSION = metadata.version("peridot-cli")
+except Exception:
+    # Fallback for source checkouts / non-installed runs.
+    APP_VERSION = "0.0.0"
+
 PACKAGE_VERSION = 1
 DEFAULT_COMPRESSION_LEVEL = 1
 DEFAULT_JOBS = max(2, min(8, os.cpu_count() or 2))
