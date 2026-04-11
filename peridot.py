@@ -3475,6 +3475,11 @@ def cmd_doctor(args) -> None:
     rows.append(("settings", "ok" if DEFAULT_SETTINGS_STORE.exists() else "default", str(DEFAULT_SETTINGS_STORE)))
     rows.append(("compression_level", "ok", f"{settings['compression_level']}/9"))
     rows.append(("compression_codec", "ok" if zstd is not None else "warn", active_compression_codec()))
+    if zstd is None:
+        rows.append(("zstd", "warn", "zstandard not installed; using gzip fallback"))
+    else:
+        zstd_version = getattr(zstd, "__version__", "unknown")
+        rows.append(("zstd", "ok", f"zstandard {zstd_version}"))
     rows.append(("jobs", "ok", str(settings["jobs"])))
     rows.append(("encryption", "ok", ENCRYPTION_ALGORITHM))
     rows.append(("language", "ok", settings["language"]))
