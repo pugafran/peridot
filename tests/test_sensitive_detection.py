@@ -13,6 +13,8 @@ def test_detect_sensitive_entries_flags_common_secret_files() -> None:
         _entry(".npmrc", ".npmrc"),
         _entry("id_rsa", ".ssh/id_rsa"),
         _entry("id_ed25519", ".ssh/id_ed25519"),
+        _entry("id_ed25519_sk", ".ssh/id_ed25519_sk"),
+        _entry("id_ecdsa_sk", ".ssh/id_ecdsa_sk"),
         _entry("id_dsa", ".ssh/id_dsa"),
         _entry("known_hosts", ".ssh/known_hosts"),
         _entry("authorized_keys", ".ssh/authorized_keys"),
@@ -59,6 +61,8 @@ def test_detect_sensitive_entries_does_not_flag_generic_config_files() -> None:
 def test_detect_sensitive_entries_does_not_flag_public_ssh_keys() -> None:
     entries = [
         _entry("id_ed25519.pub", ".ssh/id_ed25519.pub"),
+        _entry("id_ed25519_sk.pub", ".ssh/id_ed25519_sk.pub"),
+        _entry("id_ecdsa_sk.pub", ".ssh/id_ecdsa_sk.pub"),
         _entry("id_rsa.pub", ".ssh/id_rsa.pub"),
     ]
 
