@@ -43,7 +43,8 @@ _JOBS: dict[str, Job] = {}
 def _run_peridot_json(args: list[str]) -> dict[str, Any]:
     exe = os.environ.get("PERIDOT_EXE") or "peridot"
     cmd = [exe, *args]
-    p = subprocess.run(cmd, capture_output=True, text=True)
+    # Windows-friendly: force a stable encoding for JSON output.
+    p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if p.returncode != 0:
         raise RuntimeError((p.stderr or p.stdout or "").strip() or f"peridot exited {p.returncode}")
 
@@ -81,6 +82,8 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             env=env,
         )
 
@@ -169,7 +172,13 @@ def create_app():
         # Determine peridot version from `peridot --version` (stable, lightweight).
         try:
             exe = os.environ.get("PERIDOT_EXE") or "peridot"
-            p = subprocess.run([exe, "--version"], capture_output=True, text=True)
+            p = subprocess.run(
+                [exe, "--version"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
             peridot_version = (p.stdout or "").strip() if p.returncode == 0 else None
         except Exception:
             peridot_version = None
@@ -335,7 +344,8 @@ def create_app():
             raise HTTPException(status_code=404, detail="job not found")
 
         def gen():
-            last_status = None
+            # Initial comment to get the stream started reliably on some clients.
+            yield ": ok\n\n"
             while True:
                 j = _JOBS.get(job_id)
                 if not j:
@@ -360,7 +370,13 @@ def create_app():
                 # basic heartbeat
                 time.sleep(0.8)
 
-        return StreamingResponse(gen(), media_type="text/event-stream")
+        headers = {
+            # Make proxies/servers less likely to buffer SSE.
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+        return StreamingResponse(gen(), media_type="text/event-stream", headers=headers)
 
     return app
 

@@ -190,10 +190,21 @@ function renderPackWizard() {
   const sbox = $('#sensitiveList');
   sbox.innerHTML = '';
   const sensitivePaths = state.pack.scan?.sensitive || [];
-  const sensitive = sensitivePaths.length ? sensitivePaths.map(p => ({ path: p, reason: 'Sensitive path detected' })) : [
-    { path: '.ssh/config', reason: 'Sensitive path detected' },
-  ];
+  const sensitive = sensitivePaths.map(p => ({ path: p, reason: 'Sensitive path detected' }));
   state.pack.sensitive = sensitive;
+
+  if (!state.pack.scan) {
+    const msg = document.createElement('div');
+    msg.className = 'text-xs text-slate-500';
+    msg.textContent = 'Run the scan (Next) to list sensitive paths.';
+    sbox.appendChild(msg);
+  } else if (!sensitive.length) {
+    const msg = document.createElement('div');
+    msg.className = 'text-xs text-slate-400';
+    msg.textContent = 'No sensitive paths detected in this scan.';
+    sbox.appendChild(msg);
+  }
+
   for (const item of sensitive) {
     const row = document.createElement('div');
     row.className = 'flex items-center justify-between gap-3 px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/40';
