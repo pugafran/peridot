@@ -93,6 +93,13 @@ def test_install_hint_handles_windows_virtualenv_layout(tmp_path, monkeypatch):
     assert ".venv/Scripts/python.exe" in normalized
 
 
+def test_install_hint_falls_back_to_sys_executable(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    hint = peridot.install_hint(".")
+    assert peridot.sys.executable in hint
+
+
 def test_venv_activation_hint_prefers_windows_activate_script(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".venv").mkdir()

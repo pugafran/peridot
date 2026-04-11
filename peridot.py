@@ -542,7 +542,10 @@ def install_hint(target: str) -> str:
         if venv_python.exists():
             return f"{venv_python} -m pip install {target}"
 
-    return f"python -m pip install {target}"
+    # Fall back to the current interpreter so the suggestion matches the
+    # environment Peridot is running in.
+    python = getattr(sys, "executable", None) or "python"
+    return f"{python} -m pip install {target}"
 
 
 def venv_activation_hint() -> str | None:
