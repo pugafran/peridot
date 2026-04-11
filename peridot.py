@@ -1065,8 +1065,7 @@ def detect_shell() -> str:
     if os.environ.get("PSModulePath"):
         return "powershell"
 
-    raw_shell = os.environ.get("SHELL") or os.environ.get("COMSPEC") or ""
-    raw_shell = raw_shell.strip()
+    raw_shell = (os.environ.get("SHELL") or os.environ.get("COMSPEC") or "").strip()
 
     # Some environments store the shell command with extra arguments
     # (e.g. "/bin/bash -l" or "cmd.exe /c"). Parse it like a command line
@@ -1084,22 +1083,8 @@ def detect_shell() -> str:
             if shell and any(ch.isspace() for ch in shell):
                 shell = shell.split()[0]
 
-    if not shell.strip():
-        return "unknown"
-
-    # When running tests on POSIX, Windows paths with backslashes would be
-    # treated as a single filename by pathlib.Path. Detect those cases and
-    # parse them as Windows paths explicitly.
-    if "\\" in shell or (":" in shell and "/" not in shell):
-        name = PureWindowsPath(shell).name.lower()
-    else:
-        name = Path(shell).name.lower()
-    if not shell.strip():
-        return "unknown"
-
-    name = Path(shell).name.lower()
     shell = shell.strip().strip('"').strip("'")
-    if not shell.strip():
+    if not shell:
         return "unknown"
 
     # When running tests on POSIX, Windows paths with backslashes would be
@@ -1824,12 +1809,22 @@ def collect_files(
     seen: set[str] = set()
     discovered = 0
 
+    def is_symlink_safe(path: Path) -> bool | None:
+        try:
+            return path.is_symlink()
+        except (PermissionError, OSError):
+            return None
+
     for source in paths:
         expanded = source.expanduser()
         if not expanded.exists():
             console.print(f"[yellow]Aviso:[/yellow] se omite {expanded}, no existe.")
             continue
-        if expanded.is_symlink():
+        is_symlink = is_symlink_safe(expanded)
+        if is_symlink is None:
+            console.print(f"[yellow]Aviso:[/yellow] se omite {expanded}, no se puede comprobar symlink.")
+            continue
+        if is_symlink:
             console.print(f"[yellow]Aviso:[/yellow] se omite {expanded}, es un symlink.")
             continue
         if should_exclude_entry(expanded):
@@ -1839,7 +1834,13 @@ def collect_files(
         if expanded.is_file():
             relative = expanded.relative_to(export_root).as_posix()
             if relative not in seen:
-                stat_result = expanded.stat()
+                try:
+                    stat_result = expanded.stat()
+                except (PermissionError, OSError) as exc:
+                    console.print(
+                        f"[yellow]Aviso:[/yellow] se omite {expanded}, no se puede leer metadata ({type(exc).__name__}: {exc})."
+                    )
+                    continue
                 seen.add(relative)
                 entries.append(FileEntry(expanded, relative, stat_result.st_size, stat.S_IMODE(stat_result.st_mode)))
                 discovered += 1
@@ -1855,19 +1856,26 @@ def collect_files(
             dirs[:] = [
                 d
                 for d in dirs
-                if not (root_path / d).is_symlink() and not should_exclude_entry(root_path / d)
+                if (is_symlink_safe(root_path / d) is False) and not should_exclude_entry(root_path / d)
             ]
 
             for name in files:
                 file_path = root_path / name
-                if file_path.is_symlink():
+                is_symlink = is_symlink_safe(file_path)
+                if is_symlink is None or is_symlink:
                     continue
                 if should_exclude_entry(file_path):
                     continue
                 relative = file_path.relative_to(export_root).as_posix()
                 if relative in seen:
                     continue
-                stat_result = file_path.stat()
+                try:
+                    stat_result = file_path.stat()
+                except (PermissionError, OSError) as exc:
+                    console.print(
+                        f"[yellow]Aviso:[/yellow] se omite {file_path}, no se puede leer metadata ({type(exc).__name__}: {exc})."
+                    )
+                    continue
                 seen.add(relative)
                 entries.append(FileEntry(file_path, relative, stat_result.st_size, stat.S_IMODE(stat_result.st_mode)))
                 discovered += 1
@@ -2810,12 +2818,13 @@ def cmd_pack(args) -> None:
             console.print(
                 f"[yellow]{tr('Adaptive pack:')}[/yellow] {tr('Process pool no disponible en este sistema; usando threads.')}"  # noqa: E501
             )
-        with executor:
-            pending: dict = {}
-            next_index = 1
-            completed_files = 0
+        try:
+            with executor:
+                pending: dict = {}
+                next_index = 1
+                completed_files = 0
 
-            def submit_one(index: int, entry: FileEntry) -> None:
+                def submit_one(index: int, entry: FileEntry) -> None:
                     payload_name = f"{index:04d}-{hashlib.sha256(entry.relative_path.encode('utf-8')).hexdigest()[:16]}.bin"
                     future = executor.submit(
                         build_payload_job,
@@ -2828,70 +2837,73 @@ def cmd_pack(args) -> None:
                     )
                     pending[future] = (entry, payload_name)
 
-            inflight_limit = initial_jobs
-            inflight_limit, pressure_label = adaptive_next_inflight_limit(inflight_limit, requested_jobs)
-            while next_index <= len(entries) and len(pending) < inflight_limit:
-                submit_one(next_index, entries[next_index - 1])
-                next_index += 1
-
-            while pending:
-                done, _ = wait(set(pending.keys()), return_when=FIRST_COMPLETED)
-                for future in done:
-                    entry, payload_name = pending.pop(future)
-                    try:
-                        encrypted, record = future.result()
-                    except Exception as exc:
-                        record = {
-                            "path": entry.relative_path,
-                            "source": str(entry.source),
-                            "error": f"{type(exc).__name__}: {exc}",
-                        }
-                        encrypted = None
-
-                    if encrypted is None:
-                        skipped_files.append(record)
-                        if not getattr(args, "json", False):
-                            console.print(
-                                f"[yellow]Warning:[/yellow] skipped unreadable file: {record.get('path')} ({record.get('error')})"
-                            )
-                        continue
-
-                    # Write payload directly into the bundle.
-                    bundle.writestr(record["payload"], encrypted)
-
-                    files_manifest.append(record)
-                    completed_files += 1
-                    if progress is not None and task is not None:
-                        progress.update(
-                            task,
-                            advance=record["size"],
-                            file_count=completed_files,
-                            worker_status=f"active {inflight_limit}/{requested_jobs} | {pressure_label}",
-                        )
-
-                previous_limit = inflight_limit
+                inflight_limit = initial_jobs
                 inflight_limit, pressure_label = adaptive_next_inflight_limit(inflight_limit, requested_jobs)
-                if inflight_limit != previous_limit:
-                    if inflight_limit > previous_limit:
-                        detail = trf(
-                            "subiendo ventana activa {previous} -> {current} ({label}).",
-                            previous=previous_limit,
-                            current=inflight_limit,
-                            label=pressure_label,
-                        )
-                    else:
-                        detail = trf(
-                            "bajando ventana activa {previous} -> {current} ({label}).",
-                            previous=previous_limit,
-                            current=inflight_limit,
-                            label=pressure_label,
-                        )
-                    if not getattr(args, "json", False):
-                        console.print(f"[dim]{tr('Adaptive pack:')}[/dim] {detail}")
-
                 while next_index <= len(entries) and len(pending) < inflight_limit:
                     submit_one(next_index, entries[next_index - 1])
                     next_index += 1
+
+                while pending:
+                    done, _ = wait(set(pending.keys()), return_when=FIRST_COMPLETED)
+                    for future in done:
+                        entry, payload_name = pending.pop(future)
+                        try:
+                            encrypted, record = future.result()
+                        except Exception as exc:
+                            record = {
+                                "path": entry.relative_path,
+                                "source": str(entry.source),
+                                "error": f"{type(exc).__name__}: {exc}",
+                            }
+                            encrypted = None
+
+                        if encrypted is None:
+                            skipped_files.append(record)
+                            if not getattr(args, "json", False):
+                                console.print(
+                                    f"[yellow]Warning:[/yellow] skipped unreadable file: {record.get('path')} ({record.get('error')})"
+                                )
+                            continue
+
+                        # Write payload directly into the bundle.
+                        bundle.writestr(record["payload"], encrypted)
+
+                        files_manifest.append(record)
+                        completed_files += 1
+                        if progress is not None and task is not None:
+                            progress.update(
+                                task,
+                                advance=record["size"],
+                                file_count=completed_files,
+                                worker_status=f"active {inflight_limit}/{requested_jobs} | {pressure_label}",
+                            )
+
+                    previous_limit = inflight_limit
+                    inflight_limit, pressure_label = adaptive_next_inflight_limit(inflight_limit, requested_jobs)
+                    if inflight_limit != previous_limit:
+                        if inflight_limit > previous_limit:
+                            detail = trf(
+                                "subiendo ventana activa {previous} -> {current} ({label}).",
+                                previous=previous_limit,
+                                current=inflight_limit,
+                                label=pressure_label,
+                            )
+                        else:
+                            detail = trf(
+                                "bajando ventana activa {previous} -> {current} ({label}).",
+                                previous=previous_limit,
+                                current=inflight_limit,
+                                label=pressure_label,
+                            )
+                        if not getattr(args, "json", False):
+                            console.print(f"[dim]{tr('Adaptive pack:')}[/dim] {detail}")
+
+                    while next_index <= len(entries) and len(pending) < inflight_limit:
+                        submit_one(next_index, entries[next_index - 1])
+                        next_index += 1
+        finally:
+            if progress_ctx is not None:
+                progress_ctx.__exit__(None, None, None)
 
         files_manifest.sort(key=lambda item: item["path"])
         manifest = build_manifest(args, files_manifest, [str(path) for path in paths])
