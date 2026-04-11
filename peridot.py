@@ -602,7 +602,7 @@ def parse_simple_version(value: str) -> tuple[int, int, int] | None:
     We intentionally avoid external deps (packaging). If parsing fails, return None.
     """
 
-    m = re.match(r"^(\d+)\.(\d+)\.(\d+)", (value or "").strip())
+    m = re.match(r"^v?(\d+)\.(\d+)\.(\d+)", (value or "").strip())
     if not m:
         return None
     return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
