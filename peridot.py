@@ -12,6 +12,7 @@ import json
 import os
 import platform
 import shutil
+import shlex
 import socket
 import stat
 import subprocess
@@ -29,17 +30,36 @@ try:
     from cryptography.exceptions import InvalidTag
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 except ModuleNotFoundError:
-    print(
-        "Error: falta la dependencia 'cryptography'. "
-        "Instalala con 'python3 -m pip install .'.",
-        file=sys.stderr,
-    )
-    raise SystemExit(1)
+    InvalidTag = None  # type: ignore[assignment]
+    AESGCM = None  # type: ignore[assignment]
+
+
+def require_cryptography():
+    """Fail fast when cryptography-backed features are used.
+
+    We intentionally avoid aborting at import time so lightweight operations
+    such as --version/--help can still work in constrained environments.
+    """
+
+    if AESGCM is None:
+        hint = venv_activation_hint()
+        pip_hint = install_hint(".")
+        print(
+            tr("Error: falta la dependencia 'cryptography'.")
+            + " "
+            + trf("Instalala con '{cmd}'.", cmd=pip_hint)
+            + ("\n" + hint if hint else ""),
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    return AESGCM, InvalidTag
 
 try:
     import zstandard as zstd
 except ModuleNotFoundError:
     zstd = None
+
+RICH_AVAILABLE = True
 
 try:
     from rich.align import Align
@@ -51,12 +71,26 @@ try:
     from rich.table import Table
     from rich.text import Text
 except ModuleNotFoundError:
-    print(
-        "Error: falta la dependencia 'rich'. "
-        "Instalala con 'python3 -m pip install .'.",
-        file=sys.stderr,
-    )
-    raise SystemExit(1)
+    # Keep import-time lightweight so `peridot --help/--version` can run even in
+    # constrained environments. Commands that require Rich will error later.
+    RICH_AVAILABLE = False
+
+    class Console:  # type: ignore[override]
+        def print(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            print(*args)
+
+    Align = None  # type: ignore[assignment]
+    Panel = None  # type: ignore[assignment]
+    Progress = None  # type: ignore[assignment]
+    SpinnerColumn = None  # type: ignore[assignment]
+    TextColumn = None  # type: ignore[assignment]
+    TimeElapsedColumn = None  # type: ignore[assignment]
+    TimeRemainingColumn = None  # type: ignore[assignment]
+    BarColumn = None  # type: ignore[assignment]
+    Confirm = None  # type: ignore[assignment]
+    Prompt = None  # type: ignore[assignment]
+    Table = None  # type: ignore[assignment]
+    Text = None  # type: ignore[assignment]
 
 try:
     import questionary
@@ -81,11 +115,21 @@ DEFAULT_EXCLUDES = {
     ".DS_Store",
     ".Trash",
     ".cache",
+    ".git",
+    ".hg",
+    ".svn",
     ".npm",
     ".pnpm-store",
     ".yarn",
     ".local/share/Trash",
     ".config/peridot",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "node_modules",
 }
 SENSITIVE_PATTERNS = (
     "id_rsa",
@@ -187,6 +231,9 @@ TRANSLATIONS = {
         "esta sesion no tiene un TTY interactivo real.": "this session does not have a real interactive TTY.",
         "Ejecuta Peridot directamente en una terminal interactiva.": "Run Peridot directly in an interactive terminal.",
         "No hay un TTY interactivo; se excluyen rutas sensibles por defecto. Usa --yes para incluirlas.": "No interactive TTY detected; excluding sensitive paths by default. Use --yes to include them.",
+        "No hay rutas para empaquetar. Pasa rutas explicitas o prepara tu HOME.": "No paths to pack. Pass explicit paths or prepare your HOME.",
+        "No se encontro ningun archivo exportable.": "No exportable files were found.",
+        "No quedan archivos tras aplicar exclusiones y filtros de seguridad.": "No files remain after applying excludes and security filters.",
         "falta la dependencia 'questionary' en este Python.": "the 'questionary' dependency is missing in this Python.",
         "Usa el binario instalado con './install.sh' o ejecuta 'python3 -m pip install -r requirements.txt'.": "Use the binary installed with './install.sh' or run 'python3 -m pip install -r requirements.txt'.",
         "Selecciona grupos": "Select groups",
@@ -316,6 +363,15 @@ TRANSLATIONS = {
         "Alias de apply": "Alias for apply",
         "Muestra la version y sale": "Show the version and exit",
         "Ruta de la clave AES-GCM (por defecto: {path})": "AES-GCM key path (default: {path})",
+        "Error: falta la dependencia 'cryptography'.": "Error: missing 'cryptography' dependency.",
+        "Error: falta la dependencia 'rich'.": "Error: missing 'rich' dependency.",
+        "Instalala con 'python3 -m pip install .'.": "Install it with 'python3 -m pip install .'.",
+        "Instalala con '{cmd}'.": "Install it with '{cmd}'.",
+        "Tip: activa el entorno virtual con '{cmd}'.": "Tip: activate the virtualenv with '{cmd}'.",
+        "Tip: activa el entorno virtual con '. .venv/bin/activate'.": "Tip: activate the virtualenv with '. .venv/bin/activate'.",
+        "Tip: tu idioma del sistema parece espanol. Puedes cambiar la UI/CLI de Peridot con PERIDOT_LANG=es o desde la UI de Settings.": "Tip: your system language looks Spanish. You can switch Peridot UI/CLI with PERIDOT_LANG=es or via the Settings UI.",
+        "Llavero": "Keyring",
+        "Clave disponible en": "Key available at",
     }
 }
 
@@ -411,13 +467,20 @@ def set_current_language(language: str) -> None:
 def detect_runtime_language() -> str:
     env_language = os.environ.get("PERIDOT_LANG")
     if env_language:
+        normalized = env_language.strip().lower()
+        if normalized in {"auto", "system"}:
+            return detect_system_language_hint() or DEFAULT_SETTINGS["language"]
         return sanitize_language(env_language)
     try:
         settings_path = DEFAULT_SETTINGS_STORE
         if settings_path.exists():
-            raw = json.loads(settings_path.read_text())
+            raw = json.loads(settings_path.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
-                return sanitize_language(raw.get("language"))
+                language = raw.get("language")
+                normalized = str(language or "").strip().lower()
+                if normalized in {"auto", "system"}:
+                    return detect_system_language_hint() or DEFAULT_SETTINGS["language"]
+                return sanitize_language(language)
     except Exception:
         pass
     return DEFAULT_SETTINGS["language"]
@@ -444,7 +507,10 @@ def detect_system_language_hint() -> str | None:
     try:
         import locale
 
-        loc, _enc = locale.getdefaultlocale()  # type: ignore[attr-defined]
+        # locale.getdefaultlocale() is deprecated (Py 3.11+) and can emit
+        # DeprecationWarning in modern runtimes. locale.getlocale() is the
+        # supported alternative.
+        loc, _enc = locale.getlocale()
         if loc:
             return sanitize_language(loc)
     except Exception:
@@ -460,6 +526,61 @@ def tr(text: str) -> str:
 
 def trf(text: str, **kwargs) -> str:
     return tr(text).format(**kwargs)
+
+
+def install_hint(target: str) -> str:
+    """Return a copy/paste-friendly pip install command.
+
+    We prefer the repo virtualenv (./.venv) when present.
+
+    On Windows, virtualenvs use .venv/Scripts/python(.exe).
+
+    Notes:
+        sys.executable can contain spaces (e.g. "Program Files"). When we
+        fall back to it, we quote it to make the command copy/paste-friendly.
+    """
+
+    venv_dir = Path(".venv")
+    candidates = [
+        venv_dir / "bin" / "python",
+        venv_dir / "Scripts" / "python.exe",
+        venv_dir / "Scripts" / "python",
+    ]
+    for venv_python in candidates:
+        if venv_python.exists():
+            return f"{venv_python} -m pip install {target}"
+
+    # Fall back to the current interpreter so the suggestion matches the
+    # environment Peridot is running in.
+    python = getattr(sys, "executable", None) or "python"
+    python_str = str(python)
+
+    if any(ch.isspace() for ch in python_str):
+        if normalize_os_name() == "windows":
+            python_str = f'"{python_str}"'
+        else:
+            python_str = shlex.quote(python_str)
+
+    return f"{python_str} -m pip install {target}"
+
+
+def venv_activation_hint() -> str | None:
+    """Suggest activating the repo virtualenv when it exists but isn't active."""
+
+    try:
+        venv_dir = Path(".venv")
+        is_venv_active = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+        if not venv_dir.exists() or is_venv_active:
+            return None
+
+        # Prefer a hint that matches the virtualenv layout for the platform.
+        if (venv_dir / "Scripts" / "activate").exists():
+            cmd = ".venv\\Scripts\\activate"
+        else:
+            cmd = ". .venv/bin/activate"
+        return trf("Tip: activa el entorno virtual con '{cmd}'.", cmd=cmd)
+    except Exception:
+        return None
 
 
 def localize_parser(parser: argparse.ArgumentParser) -> None:
@@ -479,7 +600,24 @@ def localize_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def die(message: str) -> None:
-    console.print(f"[bold red]{tr('Error')}:[/bold red] {message}", style="red")
+    """Print an error message and exit.
+
+    When Rich is available we use markup/styling. Otherwise, fall back to a
+    plain stderr message so the output is still readable (instead of showing
+    raw "[bold red]" tags).
+    """
+
+    if not RICH_AVAILABLE:
+        print(f"{tr('Error')}: {message}", file=sys.stderr)
+        raise SystemExit(1)
+
+    # Use soft_wrap so long tokens (like file paths) aren't hard-wrapped mid-string.
+    # This keeps error messages copy/paste-friendly and avoids brittle tests.
+    console.print(
+        f"[bold red]{tr('Error')}:[/bold red] {message}",
+        style="red",
+        soft_wrap=True,
+    )
     raise SystemExit(1)
 
 
@@ -536,36 +674,73 @@ def sanitize_language(value: object) -> str:
 
     Accepts exact codes ("es", "en") and common locale variants such as
     "es-ES", "en_US" or "EN-us" by reducing them to the base language.
+
+    Also accepts some common OS locale *names* (especially on Windows), such as
+    "Spanish_Spain" / "English_United States".
     """
 
     raw = str(value or DEFAULT_SETTINGS["language"]).strip().lower()
     # Strip common locale suffixes such as ".UTF-8" or "@euro".
     raw = raw.split(".", 1)[0].split("@", 1)[0].replace("_", "-")
-    if raw in {"es", "en"}:
-        return raw
 
-    base = raw.split("-", 1)[0] if raw else ""
+    # Some platforms return language names (e.g. "Spanish-Spain"). Normalize
+    # accents so "Español" can be matched as "espanol".
+    raw_ascii = unicodedata.normalize("NFKD", raw)
+    raw_ascii = "".join(ch for ch in raw_ascii if not unicodedata.combining(ch))
+
+    if raw_ascii in {"es", "en"}:
+        return raw_ascii
+
+    base = raw_ascii.split("-", 1)[0] if raw_ascii else ""
     if base in {"es", "en"}:
         return base
+
+    # Accept common language names.
+    if base in {"spanish", "espanol"}:
+        return "es"
+    if base == "english":
+        return "en"
 
     return DEFAULT_SETTINGS["language"]
 
 
-def slugify(value: str) -> str:
+def slugify(value: str | None, max_length: int = 64) -> str:
+    """Turn an arbitrary string into a filesystem-friendly slug.
+
+    Args:
+        value: Source string.
+        max_length: Best-effort cap for the slug length. This helps keep
+            default output filenames reasonably short across platforms.
+    """
+
+    # Be defensive: callers sometimes pass None/empty values when deriving a
+    # default output name.
+    value = value or ""
+
     # Normalize unicode (e.g. "Canción" -> "Cancion") to avoid generating
     # slugs with accented characters that may be awkward in filenames/URLs.
     normalized = unicodedata.normalize("NFKD", value)
     normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
 
+    # Treat any non-alphanumeric character as a separator. This makes common
+    # inputs like "foo+bar" or "foo@bar" produce a readable slug instead of
+    # silently dropping the separator.
     cleaned: list[str] = []
+    last_was_sep = True
     for char in normalized.lower():
         if char.isalnum():
             cleaned.append(char)
-        elif char in {" ", "-", "_", "."}:
+            last_was_sep = False
+            continue
+        if not last_was_sep:
             cleaned.append("-")
+            last_was_sep = True
+
     slug = "".join(cleaned).strip("-")
-    while "--" in slug:
-        slug = slug.replace("--", "-")
+
+    if max_length and len(slug) > max_length:
+        slug = slug[:max_length].rstrip("-")
+
     return slug or "bundle"
 
 
@@ -768,7 +943,39 @@ def detect_shell() -> str:
     if os.environ.get("PSModulePath"):
         return "powershell"
 
-    shell = os.environ.get("SHELL") or os.environ.get("COMSPEC") or ""
+    raw_shell = os.environ.get("SHELL") or os.environ.get("COMSPEC") or ""
+    raw_shell = raw_shell.strip()
+
+    # Some environments store the shell command with extra arguments
+    # (e.g. "/bin/bash -l" or "cmd.exe /c"). Parse it like a command line
+    # so quoted paths with spaces still work.
+    shell = raw_shell
+    if shell:
+        try:
+            parts = shlex.split(shell, posix=True)
+        except ValueError:
+            parts = []
+        if parts:
+            shell = parts[0]
+        else:
+            shell = shell.strip().strip('"').strip("'")
+            if shell and any(ch.isspace() for ch in shell):
+                shell = shell.split()[0]
+
+    if not shell.strip():
+        return "unknown"
+
+    # When running tests on POSIX, Windows paths with backslashes would be
+    # treated as a single filename by pathlib.Path. Detect those cases and
+    # parse them as Windows paths explicitly.
+    if "\\" in shell or (":" in shell and "/" not in shell):
+        name = PureWindowsPath(shell).name.lower()
+    else:
+        name = Path(shell).name.lower()
+    if not shell.strip():
+        return "unknown"
+
+    name = Path(shell).name.lower()
     shell = shell.strip().strip('"').strip("'")
     if not shell.strip():
         return "unknown"
@@ -807,9 +1014,9 @@ def load_profiles(profile_path: Path = DEFAULT_PROFILE_STORE) -> dict:
     if not profile_path.exists():
         return {}
     try:
-        raw = json.loads(profile_path.read_text())
+        raw = json.loads(profile_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        die(f"El store de perfiles es invalido: {exc}")
+        die(f"El store de perfiles es invalido ({profile_path}): {exc}")
     if not isinstance(raw, dict):
         die("El store de perfiles debe ser un objeto JSON.")
     return raw
@@ -817,7 +1024,7 @@ def load_profiles(profile_path: Path = DEFAULT_PROFILE_STORE) -> dict:
 
 def save_profiles(data: dict, profile_path: Path = DEFAULT_PROFILE_STORE) -> None:
     ensure_parent(profile_path)
-    profile_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+    profile_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def load_settings(settings_path: Path = DEFAULT_SETTINGS_STORE) -> dict:
@@ -825,9 +1032,9 @@ def load_settings(settings_path: Path = DEFAULT_SETTINGS_STORE) -> dict:
     if not settings_path.exists():
         return data
     try:
-        raw = json.loads(settings_path.read_text())
+        raw = json.loads(settings_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        die(f"El store de settings es invalido: {exc}")
+        die(f"El store de settings es invalido ({settings_path}): {exc}")
     if not isinstance(raw, dict):
         die("El store de settings debe ser un objeto JSON.")
     data.update(raw)
@@ -845,7 +1052,7 @@ def save_settings(data: dict, settings_path: Path = DEFAULT_SETTINGS_STORE) -> N
     merged["jobs"] = sanitize_jobs(merged.get("jobs"))
     merged.pop("encryption", None)
     merged["language"] = sanitize_language(merged.get("language"))
-    settings_path.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n")
+    settings_path.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def save_history_snapshot(package_path: Path, history_dir: Path = DEFAULT_HISTORY_DIR) -> Path | None:
@@ -869,9 +1076,16 @@ def decode_aesgcm_key_bytes(raw: bytes | str) -> bytes | None:
 
     Accepts:
     - Raw 32 bytes
+    - Raw 32 bytes with a trailing newline (common when copy/pasting into files)
     - Hex-encoded 32 bytes (64 hex chars, with optional whitespace/newlines)
     - base64url-encoded bytes (with or without padding, with optional whitespace/newlines)
     - A string containing either of the above (UTF-8)
+
+    Notes:
+        When the input is *bytes*, we avoid aggressively stripping whitespace
+        because a truly-random 32-byte key can contain whitespace bytes.
+        We only strip a single trailing line ending when the length suggests
+        an otherwise-valid raw key.
     """
 
     if isinstance(raw, str):
@@ -881,6 +1095,16 @@ def decode_aesgcm_key_bytes(raw: bytes | str) -> bytes | None:
 
     if len(raw_bytes) == 32:
         return raw_bytes
+
+    if isinstance(raw, (bytes, bytearray)):
+        # Accept raw keys with a trailing newline/CRLF without touching
+        # interior bytes.
+        if raw_bytes.endswith(b"\r\n") and len(raw_bytes) == 34:
+            return raw_bytes[:-2]
+        if raw_bytes.endswith(b"\n") and len(raw_bytes) == 33:
+            return raw_bytes[:-1]
+        if raw_bytes.endswith(b"\r") and len(raw_bytes) == 33:
+            return raw_bytes[:-1]
 
     cleaned = b"".join(raw_bytes.split())
     if not cleaned:
@@ -936,7 +1160,8 @@ def load_key(key_path: Path, create: bool = False) -> bytes:
         die(f"Clave invalida en {key_path}: se esperaban 32 bytes para AES-GCM.")
     if not create:
         die(f"No se encontro la clave en {key_path}")
-    key = AESGCM.generate_key(bit_length=256)
+    AESGCM_impl, _InvalidTag = require_cryptography()
+    key = AESGCM_impl.generate_key(bit_length=256)
     write_key(key_path, key)
     return key
 
@@ -1250,7 +1475,9 @@ def render_config_group_table(groups: list[ConfigGroup], selected_keys: set[str]
 
 
 def checkbox_prompt(message: str, choices: list, instruction: str | None = None):
-    if not QUESTIONARY_AVAILABLE or not sys.stdin.isatty():
+    # questionary requires an interactive TTY; when stdout is not a real TTY
+    # (e.g. redirected output / CI), the UI becomes unreadable.
+    if not QUESTIONARY_AVAILABLE or not (sys.stdin.isatty() and sys.stdout.isatty()):
         return None
     return questionary.checkbox(
         tr(message),
@@ -1260,7 +1487,7 @@ def checkbox_prompt(message: str, choices: list, instruction: str | None = None)
 
 
 def checkbox_unavailable_reason() -> str | None:
-    if not sys.stdin.isatty():
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return "no_tty"
     if not QUESTIONARY_AVAILABLE:
         return "missing_questionary"
@@ -1523,11 +1750,23 @@ def collect_files(
 
 
 def filter_entries(entries: list[FileEntry], excludes: list[str] | None = None) -> list[FileEntry]:
+    """Filter entries by glob patterns.
+
+    Notes:
+        Manifests can contain Windows-style paths ("\\") when generated on Windows.
+        Normalize both entry paths and patterns to POSIX-style before matching so
+        excludes behave consistently across platforms.
+    """
+
     if not excludes:
         return entries
+
+    normalized_patterns = [pattern.replace("\\", "/") for pattern in excludes]
+
     filtered: list[FileEntry] = []
     for entry in entries:
-        if any(fnmatch.fnmatch(entry.relative_path, pattern) for pattern in excludes):
+        relative_norm = entry.relative_path.replace("\\", "/")
+        if any(fnmatch.fnmatch(relative_norm, pattern) for pattern in normalized_patterns):
             continue
         filtered.append(entry)
     return filtered
@@ -1596,7 +1835,8 @@ def build_payload_record(
 ) -> tuple[bytes, dict]:
     compression, payload = choose_compression(raw, relative_path, compression_level)
     nonce = os.urandom(12)
-    encrypted = AESGCM(key).encrypt(nonce, payload, None)
+    AESGCM_impl, _InvalidTag = require_cryptography()
+    encrypted = AESGCM_impl(key).encrypt(nonce, payload, None)
     encryption_meta = {"algorithm": ENCRYPTION_ALGORITHM, "nonce": nonce.hex()}
     record = {
         "path": relative_path,
@@ -1624,14 +1864,56 @@ def _is_sensitive_path(name: str, path_str: str) -> bool:
     """
 
     # Exact dotfiles / well-known filenames.
-    exact_names = {".env", ".npmrc", ".netrc", ".pypirc", "known_hosts"}
+    # Keep this list focused to avoid false positives.
+    exact_names = {
+        ".env",
+        ".npmrc",
+        ".netrc",
+        ".pypirc",
+        ".git-credentials",
+        "known_hosts",
+        "authorized_keys",
+    }
     if name in exact_names:
         return True
 
-    # SSH private keys and similar.
-    key_prefixes = {"id_rsa", "id_ed25519", "id_ecdsa"}
-    if any(name == prefix or name.startswith(f"{prefix}.") for prefix in key_prefixes):
+    # SSH config can contain host aliases, usernames, ports, proxy commands, etc.
+    # Treat it as sensitive but avoid flagging generic "config" files elsewhere.
+    # Normalize separators so Windows-style paths are covered as well.
+    path_norm = path_str.replace("\\", "/")
+    if name == "config" and (
+        path_norm.endswith("/.ssh/config")
+        or path_norm == ".ssh/config"
+        or path_norm.endswith("/.aws/config")
+        or path_norm == ".aws/config"
+    ):
         return True
+
+    # Docker credential store.
+    # https://docs.docker.com/engine/reference/commandline/login/#credentials-store
+    if name == "config.json" and (
+        path_norm.endswith("/.docker/config.json") or path_norm == ".docker/config.json"
+    ):
+        return True
+
+    # OpenSSH supports including snippets from ~/.ssh/config.d/*
+    # Those files frequently contain host aliases, user names and proxy
+    # configuration, so treat them as sensitive as well.
+    if path_norm.startswith(".ssh/config.d/") or "/.ssh/config.d/" in path_norm:
+        return True
+
+    # SSH private keys and similar.
+    # Note: public keys (e.g. id_ed25519.pub) are intentionally NOT treated as
+    # sensitive. They are meant to be shared and flagging them creates noise.
+    key_prefixes = {"id_rsa", "id_ed25519", "id_ecdsa", "id_dsa"}
+    for prefix in key_prefixes:
+        if name == prefix:
+            return True
+        if name.startswith(f"{prefix}."):
+            suffix = name[len(prefix) + 1 :]
+            if suffix == "pub":
+                return False
+            return True
 
     # Generic tokens: match as a path segment or separated word, not a substring.
     # Accept separators: / . _ - (and Windows \ just in case).
@@ -1685,12 +1967,15 @@ def filter_sensitive_entries(
     if is_tty:
         if Confirm.ask(tr("Incluir estas rutas sensibles?"), default=False):
             return entries
-        return [entry for entry in entries if entry not in sensitive_entries]
+
+        sensitive_paths = {entry.relative_path for entry in sensitive_entries}
+        return [entry for entry in entries if entry.relative_path not in sensitive_paths]
 
     console.print(
         f"[yellow]Aviso:[/yellow] {tr('No hay un TTY interactivo; se excluyen rutas sensibles por defecto. Usa --yes para incluirlas.') }"
     )
-    return [entry for entry in entries if entry not in sensitive_entries]
+    sensitive_paths = {entry.relative_path for entry in sensitive_entries}
+    return [entry for entry in entries if entry.relative_path not in sensitive_paths]
 
 
 def inflate_payload(payload: bytes, compression: str | None) -> bytes:
@@ -1736,11 +2021,13 @@ def decrypt_payload(encrypted: bytes, file_entry: dict, key: bytes) -> bytes:
     nonce_hex = encryption_meta.get("nonce")
     if not nonce_hex:
         die(f"Falta nonce para {file_entry.get('path')}")
+    AESGCM_impl, InvalidTag_impl = require_cryptography()
     try:
-        return AESGCM(key).decrypt(bytes.fromhex(nonce_hex), encrypted, None)
-    except InvalidTag:
-        raise ValueError("invalid key")
+        return AESGCM_impl(key).decrypt(bytes.fromhex(nonce_hex), encrypted, None)
     except Exception as exc:
+        # cryptography raises InvalidTag on auth failure.
+        if InvalidTag_impl is not None and isinstance(exc, InvalidTag_impl):
+            raise ValueError("invalid key")
         die(f"No se pudo descifrar {file_entry.get('path')}: {exc}")
 
 
@@ -2282,11 +2569,11 @@ def check_platform_compatibility(manifest: dict) -> tuple[bool, str]:
 
 def cmd_keygen(args) -> None:
     key = load_key(args.key, create=True)
-    fingerprint = hashlib.sha256(key).hexdigest()[:16]
+    fingerprint = fingerprint_key(key)
     console.print(
         Panel(
-            f"{'Key available at' if CURRENT_LANGUAGE == 'en' else 'Clave disponible en'} [bold]{args.key}[/bold]\nFingerprint: [cyan]{fingerprint}[/cyan]",
-            title=f"[bold bright_green]{'Keyring' if CURRENT_LANGUAGE == 'en' else 'Keyring'}[/bold bright_green]",
+            f"{tr('Clave disponible en')} [bold]{args.key}[/bold]\nFingerprint: [cyan]{fingerprint}[/cyan]",
+            title=f"[bold bright_green]{tr('Llavero')}[/bold bright_green]",
             border_style="green",
         )
     )
@@ -2304,7 +2591,7 @@ def cmd_pack(args) -> None:
     key = load_key(args.key, create=True)
     paths, output = prepare_pack_inputs(args)
     if not paths:
-        die("No hay rutas para empaquetar. Pasa rutas explicitas o prepara tu HOME.")
+        die(tr("No hay rutas para empaquetar. Pasa rutas explicitas o prepara tu HOME."))
 
     scan_progress = None
     scan_task = None
@@ -2339,11 +2626,11 @@ def cmd_pack(args) -> None:
         entries = filter_entries(collect_files(paths), args.exclude)
 
     if not entries:
-        die("No se encontro ningun archivo exportable.")
+        die(tr("No se encontro ningun archivo exportable."))
     sensitive_entries = detect_sensitive_entries(entries)
     entries = filter_sensitive_entries(entries, sensitive_entries, args, is_tty=sys.stdin.isatty())
     if not entries:
-        die("No quedan archivos tras aplicar exclusiones y filtros de seguridad.")
+        die(tr("No quedan archivos tras aplicar exclusiones y filtros de seguridad."))
 
     files_manifest: list[dict] = []
     history_snapshot = save_history_snapshot(output)
@@ -3122,7 +3409,10 @@ def cmd_settings(args) -> None:
 def cmd_init(args) -> None:
     """Initialize Peridot local state (key + settings) with sane defaults."""
 
-    print_banner()
+    json_mode = bool(getattr(args, "json", False))
+
+    if not json_mode:
+        print_banner()
 
     key_path: Path = getattr(args, "key", DEFAULT_KEY)
     settings_path: Path = DEFAULT_SETTINGS_STORE
@@ -3131,22 +3421,41 @@ def cmd_init(args) -> None:
     key = load_key(key_path, create=True)
 
     # Ensure settings exist (or overwrite with --force).
+    created_settings = False
     if settings_path.exists() and not getattr(args, "force", False):
         settings = load_settings(settings_path)
-        console.print(f"[dim]Settings already exist at {settings_path}[/dim]")
+        if not json_mode:
+            console.print(f"[dim]Settings already exist at {settings_path}[/dim]")
     else:
         ensure_parent(settings_path)
         save_settings({**DEFAULT_SETTINGS}, settings_path)
         settings = load_settings(settings_path)
-        console.print(f"[green]Created settings at {settings_path}[/green]")
+        created_settings = True
+        if not json_mode:
+            console.print(f"[green]Created settings at {settings_path}[/green]")
+
+    payload = {
+        "key_path": str(key_path),
+        "fingerprint": fingerprint_key(key),
+        "settings_path": str(settings_path),
+        "created_settings": created_settings,
+        "language": settings.get("language"),
+        "compression_level": settings.get("compression_level"),
+        "compression_codec": active_compression_codec(),
+        "jobs": settings.get("jobs"),
+    }
+
+    if json_mode:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
 
     footer = Table.grid(padding=(0, 2))
-    footer.add_row("Key", str(key_path))
-    footer.add_row("Fingerprint", fingerprint_key(key))
-    footer.add_row("Settings", str(settings_path))
-    footer.add_row("Language", str(settings.get("language")))
-    footer.add_row("Compression", f"{settings.get('compression_level')}/9 ({active_compression_codec()})")
-    footer.add_row("Jobs", str(settings.get("jobs")))
+    footer.add_row("Key", payload["key_path"])
+    footer.add_row("Fingerprint", payload["fingerprint"])
+    footer.add_row("Settings", payload["settings_path"])
+    footer.add_row("Language", str(payload["language"]))
+    footer.add_row("Compression", f"{payload['compression_level']}/9 ({payload['compression_codec']})")
+    footer.add_row("Jobs", str(payload["jobs"]))
 
     console.print(Panel(footer, title=tr("Peridot initialized"), border_style="green"))
 
@@ -3166,6 +3475,11 @@ def cmd_doctor(args) -> None:
     rows.append(("settings", "ok" if DEFAULT_SETTINGS_STORE.exists() else "default", str(DEFAULT_SETTINGS_STORE)))
     rows.append(("compression_level", "ok", f"{settings['compression_level']}/9"))
     rows.append(("compression_codec", "ok" if zstd is not None else "warn", active_compression_codec()))
+    if zstd is None:
+        rows.append(("zstd", "warn", "zstandard not installed; using gzip fallback"))
+    else:
+        zstd_version = getattr(zstd, "__version__", "unknown")
+        rows.append(("zstd", "ok", f"zstandard {zstd_version}"))
     rows.append(("jobs", "ok", str(settings["jobs"])))
     rows.append(("encryption", "ok", ENCRYPTION_ALGORITHM))
     rows.append(("language", "ok", settings["language"]))
@@ -3396,7 +3710,8 @@ def reencrypt_package(package_path: Path, old_key: bytes, new_key: bytes) -> Non
                 encrypted = source_zip.read(file_entry["payload"])
                 payload = decrypt_payload(encrypted, file_entry, old_key)
                 nonce = os.urandom(12)
-                reencrypted = AESGCM(new_key).encrypt(nonce, payload, None)
+                AESGCM_impl, _InvalidTag = require_cryptography()
+                reencrypted = AESGCM_impl(new_key).encrypt(nonce, payload, None)
                 file_entry["encryption"] = {"algorithm": ENCRYPTION_ALGORITHM, "nonce": nonce.hex()}
                 target_zip.writestr(file_entry["payload"], reencrypted)
             target_zip.writestr("manifest.json", json.dumps(manifest, indent=2, sort_keys=True) + "\n", compress_type=ZIP_DEFLATED)
@@ -3426,7 +3741,8 @@ def cmd_rekey(args) -> None:
         die("No hay paquetes para migrar. Pasa paquetes o usa --all-local.")
 
     old_key = load_key(args.key, create=False)
-    new_key = AESGCM.generate_key(bit_length=256)
+    AESGCM_impl, _InvalidTag = require_cryptography()
+    new_key = AESGCM_impl.generate_key(bit_length=256)
     backup_key_path = args.key.with_suffix(args.key.suffix + ".bak")
 
     if not args.yes and sys.stdin.isatty():
@@ -3781,6 +4097,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     init_parser = subparsers.add_parser("init", help="Inicializa Peridot (key + settings)")
     init_parser.add_argument("--force", action="store_true", help="Sobrescribe settings existentes")
+    init_parser.add_argument("--json", action="store_true", help="Structured JSON output (no banner/tables)")
     init_parser.set_defaults(func=cmd_init)
 
     ui_parser = subparsers.add_parser("ui", help="Lanza el command center visual")
@@ -3802,17 +4119,24 @@ def build_parser() -> argparse.ArgumentParser:
     export_parser.add_argument("--after-step", dest="after_steps", action="append", default=[], help="Paso post-apply")
     export_parser.add_argument("--compression-level", type=int, default=None, choices=range(0, 10), help="Nivel de compresion Peridot: zstd si esta disponible, gzip como fallback. Si no se pasa, usa settings.")
     export_parser.add_argument("--jobs", type=int, default=None, help="Numero de workers para pack. Si no se pasa, usa settings.")
+    export_parser.add_argument("--json", action="store_true", help="Structured JSON output (no banner/tables)")
     export_parser.add_argument("-y", "--yes", action="store_true", help="Aceptar avisos sensibles")
     export_parser.set_defaults(func=cmd_pack)
 
     import_parser = subparsers.add_parser("import", help="Alias de apply")
     import_parser.add_argument("package", type=Path, help="Ruta del paquete .peridot")
     import_parser.add_argument("--target", type=Path, default=Path.home(), help="Directorio destino para la restauracion")
-    import_parser.add_argument("--backup-dir", type=Path, help="Directorio donde guardar backups")
-    import_parser.add_argument("--dry-run", action="store_true", help="No escribir nada")
-    import_parser.add_argument("--ignore-platform", action="store_true", help="Ignora el target del paquete")
-    import_parser.add_argument("--select", action="append", default=[], help="Path exacto dentro del bundle")
-    import_parser.add_argument("-y", "--yes", action="store_true", help="No pedir confirmacion")
+    import_parser.add_argument("--backup-dir", type=Path, help="Si existe el fichero, guarda una copia antes de sobrescribir")
+    import_parser.add_argument("--transactional", dest="transactional", action="store_true", default=True, help="Rollback best-effort si falla a mitad (por defecto activado)")
+    import_parser.add_argument("--no-transactional", dest="transactional", action="store_false", help="Desactiva rollback transaccional")
+    import_parser.add_argument("--verify", dest="verify", action="store_true", default=True, help="Verifica hash tras escribir (por defecto activado)")
+    import_parser.add_argument("--no-verify", dest="verify", action="store_false", help="Desactiva verificacion post-escritura")
+    import_parser.add_argument("--dry-run", action="store_true", help="Muestra lo que se haria sin escribir")
+    import_parser.add_argument("--ignore-platform", action="store_true", help="Aplica incluso si el target del bundle no coincide con la maquina actual")
+    import_parser.add_argument("--select", action="append", default=[], help="Path exacto dentro del bundle a restaurar. Repetible.")
+    import_parser.add_argument("--json", action="store_true", help="Structured JSON output (no banner/tables)")
+    import_parser.add_argument("--apply-token", default="", help="Safety token produced by --dry-run --json; required by MCP")
+    import_parser.add_argument("-y", "--yes", action="store_true", help="No pedir confirmacion interactiva")
     import_parser.set_defaults(func=cmd_apply)
 
     localize_parser(parser)
@@ -3832,19 +4156,41 @@ def main(argv: Iterable[str] | None = None) -> None:
     except Exception:
         has_settings = False
 
-    if (
+    should_suggest_spanish = (
         runtime_lang == "en"
         and not os.environ.get("PERIDOT_LANG")
         and not has_settings
         and (detect_system_language_hint() or "").startswith("es")
-    ):
-        console.print(
-            "[dim]Tip: your system language looks Spanish. You can switch Peridot UI/CLI with "
-            "PERIDOT_LANG=es or via the Settings UI.[/dim]"
-        )
+    )
 
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # Avoid polluting machine-readable output modes.
+    if should_suggest_spanish and not getattr(args, "json", False):
+        sys.stderr.write(
+            tr(
+                "Tip: tu idioma del sistema parece espanol. Puedes cambiar la UI/CLI de Peridot con PERIDOT_LANG=es o desde la UI de Settings."
+            )
+            + "\n"
+        )
+
+    # Rich is required for the full TUI/pretty output, but JSON modes should
+    # still work in constrained environments.
+    json_mode = bool(getattr(args, "json", False))
+
+    if not RICH_AVAILABLE and not json_mode:
+        hint = venv_activation_hint()
+        pip_hint = install_hint(".")
+        print(
+            tr("Error: falta la dependencia 'rich'.")
+            + " "
+            + trf("Instalala con '{cmd}'.", cmd=pip_hint)
+            + ("\n" + hint if hint else ""),
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
     args.func(args)
 
 
