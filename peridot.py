@@ -1065,8 +1065,7 @@ def detect_shell() -> str:
     if os.environ.get("PSModulePath"):
         return "powershell"
 
-    raw_shell = os.environ.get("SHELL") or os.environ.get("COMSPEC") or ""
-    raw_shell = raw_shell.strip()
+    raw_shell = (os.environ.get("SHELL") or os.environ.get("COMSPEC") or "").strip()
 
     # Some environments store the shell command with extra arguments
     # (e.g. "/bin/bash -l" or "cmd.exe /c"). Parse it like a command line
@@ -1084,22 +1083,8 @@ def detect_shell() -> str:
             if shell and any(ch.isspace() for ch in shell):
                 shell = shell.split()[0]
 
-    if not shell.strip():
-        return "unknown"
-
-    # When running tests on POSIX, Windows paths with backslashes would be
-    # treated as a single filename by pathlib.Path. Detect those cases and
-    # parse them as Windows paths explicitly.
-    if "\\" in shell or (":" in shell and "/" not in shell):
-        name = PureWindowsPath(shell).name.lower()
-    else:
-        name = Path(shell).name.lower()
-    if not shell.strip():
-        return "unknown"
-
-    name = Path(shell).name.lower()
     shell = shell.strip().strip('"').strip("'")
-    if not shell.strip():
+    if not shell:
         return "unknown"
 
     # When running tests on POSIX, Windows paths with backslashes would be
