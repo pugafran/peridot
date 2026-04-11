@@ -248,6 +248,7 @@ TRANSLATIONS = {
         "mas compresion, mas lentitud": "more compression, slower speed",
         "0 = mas rapido y mas grande | 9 = mas lento y mas pequeno": "0 = faster and bigger | 9 = slower and smaller",
         "Dot Presets": "Dot Presets",
+        "Preset desconocido: {preset}. Disponibles: {available}": "Unknown preset: {preset}. Available: {available}",
         "Config Catalog": "Config Catalog",
         "Checkbox UI no disponible:": "Checkbox UI unavailable:",
         "esta sesion no tiene un TTY interactivo real.": "this session does not have a real interactive TTY.",
@@ -1588,7 +1589,8 @@ def apply_preset(args, preset_name: str, force_paths: bool = False) -> None:
         return
     preset = PRESET_LIBRARY.get(preset_name)
     if not preset:
-        die(f"Preset desconocido: {preset_name}")
+        available = ", ".join(sorted(PRESET_LIBRARY))
+        die(trf("Preset desconocido: {preset}. Disponibles: {available}", preset=preset_name, available=available))
 
     args.preset = preset_name
     if not args.name:

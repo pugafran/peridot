@@ -54,6 +54,33 @@ def test_die_falls_back_to_plain_stderr_without_rich(monkeypatch, capsys):
     assert "[bold red]" not in captured.err
 
 
+def test_apply_preset_unknown_lists_available(monkeypatch, capsys):
+    monkeypatch.setattr(peridot, "RICH_AVAILABLE", False)
+    monkeypatch.setattr(peridot, "CURRENT_LANGUAGE", "en")
+
+    args = peridot.SimpleNamespace(
+        preset="",
+        name="",
+        description="",
+        platform="",
+        shell="",
+        tags=[],
+        paths=[],
+    )
+
+    try:
+        peridot.apply_preset(args, "definitely-not-a-preset")
+    except SystemExit as exc:
+        assert exc.code == 1
+    else:
+        raise AssertionError("expected SystemExit")
+
+    captured = capsys.readouterr()
+    assert "Unknown preset: definitely-not-a-preset" in captured.err
+    assert "Available:" in captured.err
+    assert "linux-bash" in captured.err
+
+
 def test_sanitize_compression_level():
     assert peridot.sanitize_compression_level(0) == 0
     assert peridot.sanitize_compression_level(9) == 9
