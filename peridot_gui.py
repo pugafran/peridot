@@ -61,11 +61,20 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
     exe = os.environ.get("PERIDOT_EXE") or "peridot"
     cmd = [exe, *peridot_args]
 
-    # Optional progress stream via PERIDOT_PROGRESS_FD.
-    r_fd, w_fd = os.pipe()
+    # Cross-platform progress stream via a temp JSONL file.
+    progress_path = None
+    try:
+        import tempfile
+
+        progress_fd, progress_path = tempfile.mkstemp(prefix="peridot-progress-", suffix=".jsonl")
+        os.close(progress_fd)
+    except Exception:
+        progress_path = None
+
     try:
         env = dict(os.environ)
-        env["PERIDOT_PROGRESS_FD"] = str(w_fd)
+        if progress_path:
+            env["PERIDOT_PROGRESS_PATH"] = progress_path
 
         proc = subprocess.Popen(
             cmd,
@@ -73,39 +82,49 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
             stderr=subprocess.PIPE,
             text=True,
             env=env,
-            pass_fds=(w_fd,),
         )
 
-        # Close write end in parent.
-        os.close(w_fd)
-
-        progress_lines: list[dict[str, Any]] = []
+        stop = False
 
         def progress_reader():
-            with os.fdopen(r_fd, "r", encoding="utf-8", errors="replace") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
+            if not progress_path:
+                return
+            last_size = 0
+            while not stop:
+                try:
+                    p = Path(progress_path)
+                    if not p.exists():
+                        time.sleep(0.2)
                         continue
-                    try:
-                        evt = json.loads(line)
-                    except Exception:
-                        continue
-                    # Keep last progress snapshot on the job.
-                    job.result = job.result or {}
-                    job.result["progress"] = evt
+                    data = p.read_text(encoding="utf-8", errors="replace")
+                    # Only process the last line (cheap).
+                    lines = [ln for ln in data.splitlines() if ln.strip()]
+                    if lines:
+                        try:
+                            evt = json.loads(lines[-1])
+                            job.result = job.result or {}
+                            job.result["progress"] = evt
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                time.sleep(0.35)
 
         t = threading.Thread(target=progress_reader, daemon=True)
         t.start()
 
         out, err = proc.communicate()
+        stop = True
+
         if proc.returncode != 0:
             raise RuntimeError((err or out or "").strip() or f"peridot exited {proc.returncode}")
 
         try:
             job.result = json.loads(out)
         except Exception as exc:  # noqa: BLE001
-            raise RuntimeError(f"Invalid JSON output from peridot: {exc}. Output was: {out[:400]}")
+            raise RuntimeError(
+                f"Invalid JSON output from peridot: {exc}. Stdout was: {out[:400]}. Stderr was: {err[:400]}"
+            )
 
         job.status = "done"
     except Exception as exc:  # noqa: BLE001
@@ -113,10 +132,11 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
         job.error = str(exc)
     finally:
         job.finished_ts = time.time()
-        try:
-            os.close(r_fd)
-        except Exception:
-            pass
+        if progress_path:
+            try:
+                Path(progress_path).unlink(missing_ok=True)
+            except Exception:
+                pass
 
 
 # --- FastAPI app ---
@@ -179,11 +199,17 @@ def create_app():
 
     @app.get("/api/doctor")
     def doctor() -> dict[str, Any]:
-        return _run_peridot_json(["doctor", "--json"])
+        try:
+            return _run_peridot_json(["doctor", "--json"])
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
 
     @app.get("/api/settings")
     def settings() -> dict[str, Any]:
-        return _run_peridot_json(["settings", "--json"])
+        try:
+            return _run_peridot_json(["settings", "--json"])
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
 
     def _expand_path(p: str) -> str:
         return str(Path(os.path.expandvars(os.path.expanduser(p))).resolve())

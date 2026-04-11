@@ -2710,9 +2710,28 @@ def cmd_keygen(args) -> None:
 def _pack_progress_sink():
     """Optional progress sink for pack in JSON contexts.
 
-    If PERIDOT_PROGRESS_FD is set to an integer FD number, we emit newline-
-    delimited JSON events to it.
+    Supported mechanisms:
+    - PERIDOT_PROGRESS_PATH: append newline-delimited JSON events to a file.
+      (Cross-platform; preferred for Windows.)
+    - PERIDOT_PROGRESS_FD: write JSONL events to an inherited file descriptor.
+      (POSIX-friendly; not supported on Windows Python.)
     """
+
+    path = (os.environ.get("PERIDOT_PROGRESS_PATH") or "").strip()
+    if path:
+        try:
+            f = open(path, "a", encoding="utf-8", buffering=1)
+        except Exception:
+            f = None
+
+        if f is not None:
+            def emit(event: dict) -> None:
+                try:
+                    f.write(json.dumps(event, ensure_ascii=False) + "\n")
+                except Exception:
+                    pass
+
+            return emit
 
     raw = os.environ.get("PERIDOT_PROGRESS_FD")
     if not raw:
