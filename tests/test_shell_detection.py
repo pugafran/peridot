@@ -30,6 +30,18 @@ def test_detect_shell_unix(monkeypatch):
     assert peridot.detect_shell() == "zsh"
 
 
+def test_detect_shell_unix_with_args(monkeypatch):
+    monkeypatch.delenv("PSModulePath", raising=False)
+    monkeypatch.setenv("SHELL", "/bin/bash -l")
+    assert peridot.detect_shell() == "bash"
+
+
+def test_detect_shell_quoted_path_with_args(monkeypatch):
+    monkeypatch.delenv("PSModulePath", raising=False)
+    monkeypatch.setenv("SHELL", '"/usr/local/bin/fish" --login')
+    assert peridot.detect_shell() == "fish"
+
+
 def test_detect_shell_unknown_when_env_missing(monkeypatch):
     monkeypatch.delenv("SHELL", raising=False)
     monkeypatch.delenv("COMSPEC", raising=False)

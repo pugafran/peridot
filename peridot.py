@@ -12,6 +12,7 @@ import json
 import os
 import platform
 import shutil
+import shlex
 import socket
 import stat
 import subprocess
@@ -916,8 +917,25 @@ def detect_shell() -> str:
     if os.environ.get("PSModulePath"):
         return "powershell"
 
-    shell = os.environ.get("SHELL") or os.environ.get("COMSPEC") or ""
-    shell = shell.strip().strip('"').strip("'")
+    raw_shell = os.environ.get("SHELL") or os.environ.get("COMSPEC") or ""
+    raw_shell = raw_shell.strip()
+
+    # Some environments store the shell command with extra arguments
+    # (e.g. "/bin/bash -l" or "cmd.exe /c"). Parse it like a command line
+    # so quoted paths with spaces still work.
+    shell = raw_shell
+    if shell:
+        try:
+            parts = shlex.split(shell, posix=True)
+        except ValueError:
+            parts = []
+        if parts:
+            shell = parts[0]
+        else:
+            shell = shell.strip().strip('"').strip("'")
+            if shell and any(ch.isspace() for ch in shell):
+                shell = shell.split()[0]
+
     if not shell.strip():
         return "unknown"
 
