@@ -1836,6 +1836,12 @@ def _is_sensitive_path(name: str, path_str: str) -> bool:
     ):
         return True
 
+    # OpenSSH supports including snippets from ~/.ssh/config.d/*
+    # Those files frequently contain host aliases, user names and proxy
+    # configuration, so treat them as sensitive as well.
+    if path_norm.startswith(".ssh/config.d/") or "/.ssh/config.d/" in path_norm:
+        return True
+
     # SSH private keys and similar.
     # Note: public keys (e.g. id_ed25519.pub) are intentionally NOT treated as
     # sensitive. They are meant to be shared and flagging them creates noise.
