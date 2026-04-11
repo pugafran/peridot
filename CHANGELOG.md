@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.7 - 2026-04-11
+
+- version: fix `peridot --version` to report the installed package version (no longer hardcoded).
+- docs: remove hardcoded version line from README (also fixes the PyPI long_description showing 0.4.4).
+
 ## 0.4.6 - 2026-04-11
 
 - cli: add self-update flow:
