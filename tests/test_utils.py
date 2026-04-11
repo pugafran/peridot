@@ -72,6 +72,57 @@ def test_sanitize_language_falls_back_to_default():
     assert peridot.sanitize_language("") == peridot.DEFAULT_SETTINGS["language"]
 
 
+def test_install_hint_prefers_repo_virtualenv_python(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    venv_python = tmp_path / ".venv" / "bin" / "python"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.write_text("#!/bin/sh\n")
+
+    hint = peridot.install_hint(".")
+    assert ".venv/bin/python" in hint.replace("\\", "/")
+
+
+def test_install_hint_handles_windows_virtualenv_layout(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    venv_python = tmp_path / ".venv" / "Scripts" / "python.exe"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.write_text("MZ")
+
+    hint = peridot.install_hint(".")
+    normalized = hint.replace("\\", "/")
+    assert ".venv/Scripts/python.exe" in normalized
+
+
+def test_venv_activation_hint_prefers_windows_activate_script(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".venv").mkdir()
+    activate = tmp_path / ".venv" / "Scripts" / "activate"
+    activate.parent.mkdir(parents=True, exist_ok=True)
+    activate.write_text("@echo off\n")
+
+    # Ensure it behaves like we're NOT already inside a venv.
+    monkeypatch.setattr(peridot.sys, "prefix", "X")
+    monkeypatch.setattr(peridot.sys, "base_prefix", "X")
+    monkeypatch.setattr(peridot, "CURRENT_LANGUAGE", "en")
+
+    hint = peridot.venv_activation_hint()
+    assert hint is not None
+    assert "Scripts\\activate" in hint
+
+
+def test_venv_activation_hint_falls_back_to_posix_activate(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".venv").mkdir()
+
+    monkeypatch.setattr(peridot.sys, "prefix", "X")
+    monkeypatch.setattr(peridot.sys, "base_prefix", "X")
+    monkeypatch.setattr(peridot, "CURRENT_LANGUAGE", "en")
+
+    hint = peridot.venv_activation_hint()
+    assert hint is not None
+    assert ".venv/bin/activate" in hint
+
+
 def test_decode_aesgcm_key_bytes_accepts_unpadded_base64url():
     raw_key = bytes(range(32))
     encoded = peridot.base64.urlsafe_b64encode(raw_key).rstrip(b"=")

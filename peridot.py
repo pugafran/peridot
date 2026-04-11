@@ -366,6 +366,7 @@ TRANSLATIONS = {
         "Error: falta la dependencia 'rich'.": "Error: missing 'rich' dependency.",
         "Instalala con 'python3 -m pip install .'.": "Install it with 'python3 -m pip install .'.",
         "Instalala con '{cmd}'.": "Install it with '{cmd}'.",
+        "Tip: activa el entorno virtual con '{cmd}'.": "Tip: activate the virtualenv with '{cmd}'.",
         "Tip: activa el entorno virtual con '. .venv/bin/activate'.": "Tip: activate the virtualenv with '. .venv/bin/activate'.",
     }
 }
@@ -527,11 +528,20 @@ def install_hint(target: str) -> str:
     """Return a copy/paste-friendly pip install command.
 
     We prefer the repo virtualenv (./.venv) when present.
+
+    On Windows, virtualenvs use .venv/Scripts/python(.exe).
     """
 
-    venv_python = Path(".venv") / "bin" / "python"
-    if venv_python.exists():
-        return f"{venv_python} -m pip install {target}"
+    venv_dir = Path(".venv")
+    candidates = [
+        venv_dir / "bin" / "python",
+        venv_dir / "Scripts" / "python.exe",
+        venv_dir / "Scripts" / "python",
+    ]
+    for venv_python in candidates:
+        if venv_python.exists():
+            return f"{venv_python} -m pip install {target}"
+
     return f"python -m pip install {target}"
 
 
@@ -541,11 +551,17 @@ def venv_activation_hint() -> str | None:
     try:
         venv_dir = Path(".venv")
         is_venv_active = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
-        if venv_dir.exists() and not is_venv_active:
-            return tr("Tip: activa el entorno virtual con '. .venv/bin/activate'.")
+        if not venv_dir.exists() or is_venv_active:
+            return None
+
+        # Prefer a hint that matches the virtualenv layout for the platform.
+        if (venv_dir / "Scripts" / "activate").exists():
+            cmd = ".venv\\Scripts\\activate"
+        else:
+            cmd = ". .venv/bin/activate"
+        return trf("Tip: activa el entorno virtual con '{cmd}'.", cmd=cmd)
     except Exception:
-        pass
-    return None
+        return None
 
 
 def localize_parser(parser: argparse.ArgumentParser) -> None:
