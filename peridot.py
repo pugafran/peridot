@@ -751,6 +751,14 @@ def die(message: str) -> None:
 
 def normalize_os_name(value: str | None = None) -> str:
     raw = (value or platform.system()).strip().lower()
+
+    # Some environments embed extra info in platform.system(), for example:
+    # - "MSYS_NT-10.0"
+    # - "MINGW64_NT-10.0"
+    # Treat these as Windows so preset/config selection remains stable.
+    if raw.startswith(("msys", "mingw", "cygwin")):
+        return "windows"
+
     mapping = {
         "darwin": "macos",
         "mac": "macos",
