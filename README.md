@@ -4,7 +4,7 @@
 
 ![CI](https://github.com/pugafran/peridot/actions/workflows/ci.yml/badge.svg)
 
-Versión actual: `0.4.4` (ver `CHANGELOG.md`).
+Versión actual: ver `CHANGELOG.md` (o `pip show peridot-cli`).
 
 Peridot es un CLI para crear **bundles portables de configuración** (`.peridot`) con una UX cuidada.
 
