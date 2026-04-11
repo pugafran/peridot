@@ -208,10 +208,22 @@ def create_app():
 
     @app.get("/api/settings")
     def settings() -> Any:
+        # Prefer in-process access (works even if the installed CLI doesn't yet
+        # support `settings --json`).
         try:
-            return _run_peridot_json(["settings", "--json"])
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc))
+            import peridot as peridot_mod  # type: ignore
+
+            settings_path = str(getattr(peridot_mod, "DEFAULT_SETTINGS_STORE"))
+            data = peridot_mod.load_settings()
+            return {"settings_path": settings_path, "settings": data}
+        except SystemExit as exc:
+            raise HTTPException(status_code=500, detail=f"peridot load_settings failed: {exc}")
+        except Exception:
+            # Fallback to CLI if import fails.
+            try:
+                return _run_peridot_json(["settings", "--json"])
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail=str(exc))
 
     def _expand_path(p: str) -> str:
         return str(Path(os.path.expandvars(os.path.expanduser(p))).resolve())
