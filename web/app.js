@@ -35,14 +35,13 @@ async function api(path, opts={}) {
   if (!r.ok) {
     // FastAPI errors are usually JSON: {"detail": "..."}.
     // Prefer showing a clean message instead of a raw HTML/JSON blob.
-    try {
-      if (isJson) {
-        const j = await r.json();
+    if (isJson) {
+      let j = null;
+      try { j = await r.json(); } catch { j = null; }
+      if (j) {
         const msg = (j && (j.detail || j.error)) ? (j.detail || j.error) : JSON.stringify(j);
         throw new Error(String(msg));
       }
-    } catch {
-      // fallthrough
     }
     const txt = await r.text();
     throw new Error((txt || '').trim() || `HTTP ${r.status}`);
