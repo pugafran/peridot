@@ -60,6 +60,8 @@ def test_gui_sse_job_events_stream():
 
     import peridot_gui
 
+    # Keep this test pure/in-process: it validates the SSE stream format without
+    # depending on subprocess behavior.
     jid = "test-job"
     peridot_gui._JOBS[jid] = peridot_gui.Job(
         id=jid,
@@ -87,3 +89,44 @@ def test_gui_sse_job_events_stream():
             break
     else:
         raise AssertionError("no data line found")
+
+
+def test_gui_pack_job_end_to_end(tmp_path: Path, monkeypatch):
+    c = _client()
+
+    # Force the GUI to spawn the Peridot module via the current interpreter.
+    # This is Windows-friendly and works in editable checkouts.
+    import sys
+
+    monkeypatch.setenv("PERIDOT_EXE", f"{sys.executable} -m peridot")
+
+    root = tmp_path / "src"
+    root.mkdir()
+    (root / "hello.txt").write_text("hello", encoding="utf-8")
+
+    out = tmp_path / "out.peridot"
+
+    r = c.post(
+        "/api/pack",
+        json={
+            "name": "test-bundle",
+            "paths": [str(root)],
+            "output": str(out),
+            "excludes": [],
+        },
+    )
+    assert r.status_code == 200
+    job_id = r.json()["job_id"]
+
+    # Poll until completion (the job runs in a background thread).
+    import time
+
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        j = c.get(f"/api/jobs/{job_id}").json()
+        if j["status"] in {"done", "error"}:
+            break
+        time.sleep(0.2)
+
+    assert j["status"] == "done", j
+    assert Path(j["result"]["output"]).exists()
