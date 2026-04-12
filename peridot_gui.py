@@ -590,9 +590,11 @@ def create_app():
 
         headers = {
             # Make proxies/servers less likely to buffer SSE.
-            "Cache-Control": "no-cache",
+            # - no-transform helps some middleware avoid compressing/buffering.
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            "X-Content-Type-Options": "nosniff",
         }
         return StreamingResponse(gen(), media_type="text/event-stream", headers=headers)
 

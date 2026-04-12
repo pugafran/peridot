@@ -28,12 +28,27 @@ async function api(path, opts={}) {
     headers: { 'Content-Type': 'application/json', ...(opts.headers||{}) },
     ...opts,
   });
-  if (!r.ok) {
-    const t = await r.text();
-    throw new Error(t || `HTTP ${r.status}`);
-  }
+
   const ct = r.headers.get('content-type') || '';
-  if (ct.includes('application/json')) return await r.json();
+  const isJson = ct.includes('application/json');
+
+  if (!r.ok) {
+    // FastAPI errors are usually JSON: {"detail": "..."}.
+    // Prefer showing a clean message instead of a raw HTML/JSON blob.
+    try {
+      if (isJson) {
+        const j = await r.json();
+        const msg = (j && (j.detail || j.error)) ? (j.detail || j.error) : JSON.stringify(j);
+        throw new Error(String(msg));
+      }
+    } catch {
+      // fallthrough
+    }
+    const txt = await r.text();
+    throw new Error((txt || '').trim() || `HTTP ${r.status}`);
+  }
+
+  if (isJson) return await r.json();
   return await r.text();
 }
 
