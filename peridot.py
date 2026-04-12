@@ -609,7 +609,17 @@ def install_hint(target: str) -> str:
     Notes:
         sys.executable can contain spaces (e.g. "Program Files"). When we
         fall back to it, we quote it to make the command copy/paste-friendly.
+
+        The install *target* can also contain spaces (e.g. a local path).
+        Quote it so the suggested command remains copy/paste-friendly.
     """
+
+    target_str = str(target)
+    if any(ch.isspace() for ch in target_str):
+        if normalize_os_name() == "windows":
+            target_str = f'"{target_str}"'
+        else:
+            target_str = shlex.quote(target_str)
 
     venv_dir = Path(".venv")
     candidates = [
@@ -619,7 +629,7 @@ def install_hint(target: str) -> str:
     ]
     for venv_python in candidates:
         if venv_python.exists():
-            return f"{venv_python} -m pip install {target}"
+            return f"{venv_python} -m pip install {target_str}"
 
     # Fall back to the current interpreter so the suggestion matches the
     # environment Peridot is running in.
@@ -632,7 +642,7 @@ def install_hint(target: str) -> str:
         else:
             python_str = shlex.quote(python_str)
 
-    return f"{python_str} -m pip install {target}"
+    return f"{python_str} -m pip install {target_str}"
 
 
 def venv_activation_hint() -> str | None:

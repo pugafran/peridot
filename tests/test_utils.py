@@ -38,6 +38,15 @@ def test_format_bytes():
     assert peridot.format_bytes(1024) == "1.0 KB"
 
 
+def test_install_hint_quotes_targets_with_spaces(monkeypatch):
+    # Keep the test stable on non-Windows runners.
+    monkeypatch.setattr(peridot, "normalize_os_name", lambda: "linux")
+
+    cmd = peridot.install_hint("/tmp/a folder/peridot")
+    assert "pip install" in cmd
+    assert "'/tmp/a folder/peridot'" in cmd
+
+
 def test_die_falls_back_to_plain_stderr_without_rich(monkeypatch, capsys):
     monkeypatch.setattr(peridot, "RICH_AVAILABLE", False)
     monkeypatch.setattr(peridot, "CURRENT_LANGUAGE", "en")
