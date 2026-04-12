@@ -700,6 +700,22 @@ async function boot() {
   });
 
   // pack wizard buttons
+  $('#btnUsePresetPaths')?.addEventListener('click', () => {
+    if (!state.preset) {
+      toast('Pick a preset first.', 'warn');
+      return;
+    }
+    const spec = (state.meta?.presets || []).find(x => x.key === state.preset);
+    const paths = (spec && Array.isArray(spec.paths)) ? spec.paths : [];
+    if (!paths.length) {
+      toast('This preset has no default paths.', 'warn');
+      return;
+    }
+    state.pack.paths = paths;
+    $('#packPaths').value = paths.join('\n');
+    toastKey('toast.preset', { preset: state.preset });
+  });
+
   $('#packPrev').addEventListener('click', () => {
     const v = Math.max(1, Number($('#packStep').value) - 1);
     $('#packStep').value = String(v);

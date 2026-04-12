@@ -171,7 +171,10 @@
                       <input id="packName" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="my-bundle" />
                     </div>
                     <div class="md:col-span-2">
-                      <label class="block text-sm text-slate-300">Paths</label>
+                      <div class="flex items-center justify-between gap-2">
+                        <label class="block text-sm text-slate-300">Paths</label>
+                        <button id="btnUsePresetPaths" class="px-2 py-1 rounded-lg border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-[11px] text-slate-200" type="button">Use preset paths</button>
+                      </div>
                       <textarea id="packPaths" rows="3" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="~/.config\n~/.gitconfig"></textarea>
                       <div class="text-xs text-slate-500 mt-2">One per line (recommended). Also accepts <span class="text-slate-300">;</span> or <span class="text-slate-300">,</span> separators.</div>
                     </div>
