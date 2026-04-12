@@ -2654,6 +2654,11 @@ def render_bundle_card(manifest: dict, package_path: Path | None = None) -> None
     table.add_row("Description", description)
     table.add_row("Target", f"{platform_data['os']} / {platform_data.get('shell') or 'any'} / {platform_data.get('arch') or 'any'}")
     table.add_row("Files", str(stats["files"]))
+
+    skipped_files = bundle.get("skipped_files") or []
+    if skipped_files:
+        table.add_row("Skipped", str(len(skipped_files)))
+
     table.add_row("Payload", format_bytes(stats["bytes"]))
     table.add_row("Encryption", ", ".join(algorithms))
     table.add_row("Tags", tags)
