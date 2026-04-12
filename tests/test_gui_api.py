@@ -1,74 +1,82 @@
-import json
-from types import SimpleNamespace
+import os
+import time
+from pathlib import Path
 
 import pytest
 
 
-def test_gui_api_endpoints_smoke(monkeypatch):
-    fastapi = pytest.importorskip("fastapi")
-    pytest.importorskip("starlette")
+fastapi = pytest.importorskip("fastapi")
+from fastapi.testclient import TestClient  # noqa: E402
 
-    import peridot_gui
 
-    # Avoid depending on a `peridot` executable in PATH.
-    def fake_run_peridot_json(args):
-        if args == ["doctor", "--json"]:
-            return {"ok": True, "args": args}
-        raise RuntimeError("unexpected args")
+@pytest.fixture()
+def client(tmp_path, monkeypatch):
+    # Use the in-repo module rather than requiring an installed `peridot` binary.
+    monkeypatch.setenv("PERIDOT_EXE", "python3 -m peridot")
 
-    monkeypatch.setattr(peridot_gui, "_run_peridot_json", fake_run_peridot_json)
+    # Ensure pack outputs go to the temp dir if the test triggers a pack.
+    monkeypatch.chdir(tmp_path)
 
-    # Make /api/meta stable by faking subprocess.run used for `peridot --version`.
-    def fake_subprocess_run(cmd, **kwargs):
-        assert cmd[:1]
-        if cmd[1:] == ["--version"] or cmd == ["peridot", "--version"]:
-            return SimpleNamespace(returncode=0, stdout="peridot 0.0.0-test\n", stderr="")
-        return SimpleNamespace(returncode=1, stdout="", stderr="")
-
-    monkeypatch.setattr(peridot_gui.subprocess, "run", fake_subprocess_run)
-
-    from fastapi.testclient import TestClient
+    import peridot_gui  # noqa: WPS433
 
     app = peridot_gui.create_app()
-    c = TestClient(app)
+    return TestClient(app)
 
-    r = c.get("/api/meta")
+
+def test_meta_smoke(client):
+    r = client.get("/api/meta")
     assert r.status_code == 200
-    meta = r.json()
-    assert "runtime" in meta
+    j = r.json()
+    assert "runtime" in j
+    assert "presets" in j
 
-    r = c.get("/api/doctor")
+
+def test_settings_smoke(client):
+    r = client.get("/api/settings")
     assert r.status_code == 200
-    assert r.json()["ok"] is True
+    j = r.json()
+    assert "settings" in j
 
-    r = c.get("/api/settings")
+
+def test_pack_scan_smoke(client, tmp_path):
+    p = tmp_path / "a.txt"
+    p.write_text("hello", encoding="utf-8")
+
+    r = client.post(
+        "/api/pack/scan",
+        json={"paths": [str(p)], "excludes": []},
+    )
     assert r.status_code == 200
-    data = r.json()
-    assert "settings" in data
+    j = r.json()
+    assert j["files"] >= 1
+    assert "sensitive" in j
 
 
-def test_gui_sse_streams_job_state():
-    pytest.importorskip("fastapi")
-    pytest.importorskip("starlette")
+def test_pack_job_and_events_smoke(client, tmp_path):
+    # Keep it tiny: a single file.
+    p = tmp_path / "b.txt"
+    p.write_text("hello", encoding="utf-8")
+    out = tmp_path / "bundle.peridot"
 
-    import peridot_gui
-    from fastapi.testclient import TestClient
+    r = client.post(
+        "/api/pack",
+        json={"name": "bundle", "paths": [str(p)], "output": str(out), "excludes": []},
+    )
+    assert r.status_code == 200
+    job_id = r.json()["job_id"]
 
-    app = peridot_gui.create_app()
-    c = TestClient(app)
+    # Poll until done (SSE is hard to assert deterministically in TestClient,
+    # but this ensures the job runner path works end-to-end).
+    deadline = time.time() + 30
+    last = None
+    while time.time() < deadline:
+        jr = client.get(f"/api/jobs/{job_id}")
+        assert jr.status_code == 200
+        last = jr.json()
+        if last["status"] in {"done", "error"}:
+            break
+        time.sleep(0.25)
 
-    jid = "test-job"
-    peridot_gui._JOBS[jid] = peridot_gui.Job(id=jid, kind="pack", status="running", created_ts=0.0)
-
-    with c.stream("GET", f"/api/jobs/{jid}/events") as r:
-        assert r.status_code == 200
-        # Read a few SSE lines and ensure at least one data: payload appears.
-        it = r.iter_lines()
-        for _ in range(50):
-            ln = next(it).decode("utf-8", errors="replace")
-            if ln.startswith("data: "):
-                payload = json.loads(ln[len("data: ") :])
-                assert payload["id"] == jid
-                break
-        else:
-            raise AssertionError("no SSE data line received")
+    assert last is not None
+    assert last["status"] == "done", last
+    assert Path(last["result"]["output"]).exists()

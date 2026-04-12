@@ -40,9 +40,34 @@ class Job:
 _JOBS: dict[str, Job] = {}
 
 
+def _peridot_cmd_prefix() -> list[str]:
+    """Return the command prefix used to invoke the Peridot CLI.
+
+    Supports:
+    - PERIDOT_EXE="peridot" (default)
+    - PERIDOT_EXE="C:\\Path With Spaces\\peridot.exe"
+    - PERIDOT_EXE="python -m peridot" (useful for dev/tests)
+
+    We avoid shell=True for safety and Windows consistency.
+    """
+
+    import shlex
+
+    raw = (os.environ.get("PERIDOT_EXE") or "peridot").strip()
+    if not raw:
+        raw = "peridot"
+
+    # shlex on Windows uses different quoting rules; best-effort.
+    try:
+        parts = shlex.split(raw, posix=(os.name != "nt"))
+    except Exception:
+        parts = [raw]
+
+    return parts or ["peridot"]
+
+
 def _run_peridot_json(args: list[str]) -> dict[str, Any]:
-    exe = os.environ.get("PERIDOT_EXE") or "peridot"
-    cmd = [exe, *args]
+    cmd = [*_peridot_cmd_prefix(), *args]
 
     # Windows-first: prevent console windows from flashing when the GUI spawns
     # subprocesses (best-effort; no-op on non-Windows).
@@ -73,8 +98,7 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
     job.status = "running"
     job.started_ts = time.time()
 
-    exe = os.environ.get("PERIDOT_EXE") or "peridot"
-    cmd = [exe, *peridot_args]
+    cmd = [*_peridot_cmd_prefix(), *peridot_args]
 
     # Cross-platform progress stream via a temp JSONL file.
     progress_path = None
@@ -221,13 +245,12 @@ def create_app():
         # Presets are static in peridot.py, so we expose them here so the UI can render cards.
         # Determine peridot version from `peridot --version` (stable, lightweight).
         try:
-            exe = os.environ.get("PERIDOT_EXE") or "peridot"
             creationflags = 0
             if os.name == "nt":
                 creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
             p = subprocess.run(
-                [exe, "--version"],
+                [*_peridot_cmd_prefix(), "--version"],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -539,7 +562,9 @@ def create_app():
 
         # If preset is provided, pass it through and let peridot resolve defaults.
         out = payload.get("output")
-        args = ["pack", name, *paths, "--json", "--yes"]
+        args = ["pack", name, "--json", "--yes"]
+        if paths:
+            args.extend(paths)
         for pat in excludes:
             args.extend(["--exclude", pat])
         if preset:
@@ -571,50 +596,51 @@ def create_app():
         }
 
     @app.get("/api/jobs/{job_id}/events")
-    def job_events(job_id: str):
+    async def job_events(job_id: str):
         """Server-Sent Events stream for job status.
 
         This is a simple streaming layer (not true per-file progress yet), but it
         makes the UI feel alive.
+
+        Implemented as an async generator so we don't block the event loop
+        (important for responsiveness, especially on Windows).
         """
 
         job = _JOBS.get(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="job not found")
 
-        def gen():
+        import asyncio
+
+        async def gen():
             # Initial comment to get the stream started reliably on some clients.
             yield ": ok\n\n"
             # Hint to the browser how quickly to retry.
             yield "retry: 1000\n\n"
             while True:
-                try:
-                    j = _JOBS.get(job_id)
-                    if not j:
-                        yield "event: done\ndata: {}\n\n"
-                        return
-
-                    payload = {
-                        "id": j.id,
-                        "kind": j.kind,
-                        "status": j.status,
-                        "created_ts": j.created_ts,
-                        "started_ts": j.started_ts,
-                        "finished_ts": j.finished_ts,
-                        "result": j.result,
-                        "error": j.error,
-                    }
-
-                    # EventSource default handler uses the implicit "message" event.
-                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                    if j.status in {"done", "error"}:
-                        return
-
-                    # basic heartbeat
-                    time.sleep(0.8)
-                except GeneratorExit:
-                    # Client disconnected.
+                j = _JOBS.get(job_id)
+                if not j:
+                    yield "event: done\ndata: {}\n\n"
                     return
+
+                payload = {
+                    "id": j.id,
+                    "kind": j.kind,
+                    "status": j.status,
+                    "created_ts": j.created_ts,
+                    "started_ts": j.started_ts,
+                    "finished_ts": j.finished_ts,
+                    "result": j.result,
+                    "error": j.error,
+                }
+
+                # EventSource default handler uses the implicit "message" event.
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                if j.status in {"done", "error"}:
+                    return
+
+                # basic heartbeat
+                await asyncio.sleep(0.8)
 
         headers = {
             # Make proxies/servers less likely to buffer SSE.
