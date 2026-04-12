@@ -180,6 +180,13 @@ DEFAULT_EXCLUDES = {
     ".pytest_cache",
     ".mypy_cache",
     ".ruff_cache",
+    # Common Python tooling output
+    ".tox",
+    ".nox",
+    ".hypothesis",
+    ".coverage",
+    "coverage.xml",
+    "htmlcov",
     "node_modules",
     ".idea",
 }
