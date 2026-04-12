@@ -239,7 +239,8 @@ function renderPackWizard() {
       const s = (i === 0) ? String(Math.round(v)) : v.toFixed(v >= 10 ? 1 : 2);
       return `${s} ${u[i]}`;
     };
-    ssum.textContent = `Scan: ${files} files · ${fmtBytes(bytes)} · ${sensitive.length} sensitive`;
+    const missing = (state.pack.scan.missing_paths || []).length;
+    ssum.textContent = `Scan: ${files} files · ${fmtBytes(bytes)} · ${sensitive.length} sensitive` + (missing ? ` · ${missing} missing path(s)` : '');
 
     if (!sensitive.length) {
       const msg = document.createElement('div');

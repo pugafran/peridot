@@ -296,7 +296,22 @@ def create_app():
 
         expanded = [_expand_path(p) for p in paths]
 
-        entries = peridot_mod.collect_files([Path(p) for p in expanded])
+        # Windows-first UX: presets may include paths that don't exist on a given
+        # machine (e.g. fresh installs). Avoid noisy console prints from
+        # collect_files() and surface missing paths explicitly to the UI.
+        existing: list[Path] = []
+        missing: list[str] = []
+        for p in expanded:
+            pp = Path(p)
+            try:
+                if pp.expanduser().exists():
+                    existing.append(pp)
+                else:
+                    missing.append(p)
+            except Exception:
+                missing.append(p)
+
+        entries = peridot_mod.collect_files(existing)
         entries = peridot_mod.filter_entries(entries, excludes)
         sensitive = peridot_mod.detect_sensitive_entries(entries)
 
@@ -305,6 +320,7 @@ def create_app():
             "preset": preset or None,
             "paths": paths,
             "expanded_paths": expanded,
+            "missing_paths": missing,
             "excludes": excludes,
             "files": len(entries),
             "bytes": total_bytes,
