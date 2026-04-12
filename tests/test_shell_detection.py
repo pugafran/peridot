@@ -24,6 +24,14 @@ def test_detect_shell_cmd_when_comspec_cmd_backslashes(monkeypatch):
     assert peridot.detect_shell() == "cmd"
 
 
+def test_detect_shell_powershell_when_comspec_is_quoted_with_spaces(monkeypatch):
+    monkeypatch.delenv("SHELL", raising=False)
+    monkeypatch.delenv("PSModulePath", raising=False)
+    # Common on Windows when COMSPEC (or SHELL) is set to a quoted path with spaces.
+    monkeypatch.setenv("COMSPEC", '"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -NoLogo')
+    assert peridot.detect_shell() == "powershell"
+
+
 def test_detect_shell_unix(monkeypatch):
     monkeypatch.delenv("PSModulePath", raising=False)
     monkeypatch.setenv("SHELL", "/bin/zsh")

@@ -1235,8 +1235,13 @@ def detect_shell() -> str:
     # so quoted paths with spaces still work.
     shell = raw_shell
     if shell:
+        # shlex.split(posix=True) treats backslashes as escape characters,
+        # which breaks common Windows-style values such as:
+        #   "C:\\Program Files\\PowerShell\\7\\pwsh.exe" -NoLogo
+        # Detect those inputs and parse them in non-posix mode.
+        looks_windowsy = "\\" in shell or bool(re.match(r"^[A-Za-z]:", shell.strip().lstrip('"').lstrip("'")))
         try:
-            parts = shlex.split(shell, posix=True)
+            parts = shlex.split(shell, posix=not looks_windowsy)
         except ValueError:
             parts = []
         if parts:
