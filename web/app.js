@@ -3,6 +3,29 @@ import { t } from './i18n.js';
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+function fmtBytes(n) {
+  const v = Number(n || 0);
+  if (!Number.isFinite(v)) return '';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let x = v;
+  let i = 0;
+  while (x >= 1024 && i < units.length - 1) { x /= 1024; i++; }
+  return `${x.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function setClipboard(text) {
+  try {
+    navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function revealPath(path) {
+  await api('/api/os/reveal', { method: 'POST', body: JSON.stringify({ path }) });
+}
+
 const state = {
   route: 'home',
   lang: 'en',
@@ -532,18 +555,7 @@ async function boot() {
     const v = e.target.value;
     if (v) $('#inspectPath').value = v;
   });
-  function setClipboard(text) {
-    try {
-      navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  async function revealPath(path) {
-    await api('/api/os/reveal', { method: 'POST', body: JSON.stringify({ path }) });
-  }
+  // clipboard + reveal helpers are defined at module scope
 
   function safeGet(obj, path, fallback = null) {
     try {
@@ -553,15 +565,7 @@ async function boot() {
     }
   }
 
-  function fmtBytes(n) {
-    const v = Number(n || 0);
-    if (!Number.isFinite(v)) return '';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    let x = v;
-    let i = 0;
-    while (x >= 1024 && i < units.length - 1) { x /= 1024; i++; }
-    return `${x.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-  }
+  // fmtBytes() helper is defined at module scope
 
   $('#btnInspect')?.addEventListener('click', async () => {
     $('#inspectStatus').textContent = 'loading…';
@@ -601,6 +605,15 @@ async function boot() {
 
   // apply
   let lastPlan = null;
+
+  function updateApplyEnabled() {
+    const token = String(lastPlan && lastPlan.apply_token ? lastPlan.apply_token : '');
+    const confirm = String($('#applyTokenConfirm')?.value || '');
+    $('#btnApplyRun').disabled = !(token && confirm && token === confirm);
+  }
+
+  $('#applyTokenConfirm')?.addEventListener('input', updateApplyEnabled);
+
   $('#btnApplyPlan')?.addEventListener('click', async () => {
     $('#applyStatus').textContent = 'planning…';
     $('#applyProgressBar').style.width = '0%';
@@ -621,7 +634,11 @@ async function boot() {
       $('#applySummary').textContent = `${compat} · ${plan.length} changes (${creates} create, ${overwrites} overwrite) · ${fmtBytes(bytes)}`;
 
       $('#applyStatus').textContent = 'planned';
-      $('#btnApplyRun').disabled = false;
+
+      // Show apply token and require manual confirmation (safety).
+      $('#applyToken').value = String(lastPlan.apply_token || '');
+      $('#applyTokenConfirm').value = '';
+      updateApplyEnabled();
       $('#applyProgressBar').style.width = '15%';
     } catch (e) {
       $('#applyStatus').textContent = 'error';
@@ -630,8 +647,13 @@ async function boot() {
   });
 
   $('#btnApplyRun')?.addEventListener('click', async () => {
-    if (!lastPlan || !lastPlan.apply_token) {
+    const token = String($('#applyTokenConfirm')?.value || '');
+    if (!lastPlan || !lastPlan.apply_token || !token) {
       toastKey('toast.applyRunFailed', { err: 'missing token' }, 'error');
+      return;
+    }
+    if (token !== String(lastPlan.apply_token)) {
+      toastKey('toast.applyRunFailed', { err: 'token mismatch' }, 'error');
       return;
     }
     $('#applyStatus').textContent = 'applying…';
@@ -640,7 +662,7 @@ async function boot() {
       const target = ($('#applyTarget').value || '').trim();
       const r = await api('/api/apply/run', {
         method: 'POST',
-        body: JSON.stringify({ package: packagePath, target, apply_token: lastPlan.apply_token })
+        body: JSON.stringify({ package: packagePath, target, apply_token: token })
       });
       const es = new EventSource(`/api/jobs/${r.job_id}/events`);
       es.onmessage = (ev) => {
