@@ -4268,7 +4268,7 @@ def build_parser() -> argparse.ArgumentParser:
     pack_parser.add_argument("-y", "--yes", action="store_true", help="Aceptar avisos sensibles sin confirmacion")
     pack_parser.set_defaults(func=cmd_pack)
 
-    bench_parser = subparsers.add_parser("bench", help="Benchmark rapido de pack (tiempo + tamano)")
+    bench_parser = subparsers.add_parser("bench", help="Quick pack benchmark (time + size)")
     bench_parser.add_argument("--files", type=int, default=200, help="Numero de ficheros sinteticos")
     bench_parser.add_argument("--size-kb", type=int, default=4, help="Tamano por fichero (KB)")
     bench_parser.add_argument("--runs", type=int, default=1, help="Repeticiones por configuracion")
@@ -4412,7 +4412,7 @@ def build_parser() -> argparse.ArgumentParser:
     keygen_parser = subparsers.add_parser("keygen", help="Genera o muestra la clave activa")
     keygen_parser.set_defaults(func=cmd_keygen)
 
-    init_parser = subparsers.add_parser("init", help="Inicializa Peridot (key + settings)")
+    init_parser = subparsers.add_parser("init", help="Initialize Peridot (key + settings)")
     init_parser.add_argument("--force", action="store_true", help="Sobrescribe settings existentes")
     init_parser.add_argument("--json", action="store_true", help="Structured JSON output (no banner/tables)")
     init_parser.set_defaults(func=cmd_init)
