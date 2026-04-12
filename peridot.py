@@ -3379,6 +3379,21 @@ def cmd_apply(args) -> None:
 
     total_bytes = sum(entry["size"] for entry in filtered_manifest["files"])
 
+    # Optional progress sink for JSON mode (GUI/MCP).
+    # Uses the same env vars as pack: PERIDOT_PROGRESS_PATH / PERIDOT_PROGRESS_FD.
+    progress_emit = _pack_progress_sink() if json_mode else None
+    if progress_emit:
+        progress_emit(
+            {
+                "type": "apply_start",
+                "files_total": int(len(filtered_manifest["files"])),
+                "bytes_total": int(total_bytes),
+                "target": str(target_root),
+            }
+        )
+
+    bytes_done = 0
+
     # If transactional and user didn't request backups, use a temporary backup dir.
     temp_backup_ctx = TemporaryDirectory() if transactional and not backup_dir else None
     try:
@@ -3462,12 +3477,49 @@ def cmd_apply(args) -> None:
                     except OSError:
                         pass
                     restored += 1
+
+                    size = int(file_entry.get("size") or 0)
+                    bytes_done += size
+
                     if progress is not None and task is not None:
-                        progress.update(task, advance=file_entry["size"], file_count=restored)
+                        progress.update(task, advance=size, file_count=restored)
+
+                    if progress_emit:
+                        pct = 0
+                        if total_bytes:
+                            pct = int(min(100, round((bytes_done / max(1, total_bytes)) * 100)))
+                        elif filtered_manifest["files"]:
+                            pct = int(min(100, round((restored / max(1, len(filtered_manifest["files"]))) * 100)))
+                        progress_emit(
+                            {
+                                "type": "apply_progress",
+                                "files_done": int(restored),
+                                "files_total": int(len(filtered_manifest["files"])),
+                                "bytes_done": int(bytes_done),
+                                "bytes_total": int(total_bytes),
+                                "percent": int(pct),
+                                "current": str(file_entry.get("path") or ""),
+                            }
+                        )
+
+            if progress_emit:
+                progress_emit(
+                    {
+                        "type": "apply_done",
+                        "files_done": int(restored),
+                        "files_total": int(len(filtered_manifest["files"])),
+                        "bytes_done": int(bytes_done),
+                        "bytes_total": int(total_bytes),
+                        "percent": 100,
+                        "target": str(target_root),
+                    }
+                )
 
     except Exception as exc:
         if transactional:
             rollback(f"exception: {exc}")
+        if progress_emit:
+            progress_emit({"type": "apply_error", "error": str(exc)})
         raise
     finally:
         if progress_ctx is not None:
