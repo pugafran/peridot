@@ -41,6 +41,7 @@ Changelog = "https://github.com/pugafran/peridot/blob/main/CHANGELOG.md"
 [project.scripts]
 peridot = "peridot:main"
 peridot-mcp = "peridot_mcp:main"
+peridot-gui = "peridot_gui:main"
 
 [project.optional-dependencies]
 gui = [
@@ -54,3 +55,8 @@ dev = [
 
 [tool.setuptools]
 py-modules = ["peridot", "peridot_mcp"]
+packages = ["peridot_gui"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+peridot_gui = ["web/*"]

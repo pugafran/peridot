@@ -4,6 +4,9 @@ Run (dev):
   python -m pip install -e ".[gui]"
   python -m peridot_gui
 
+Run (installed):
+  peridot-gui
+
 This is intentionally an *experimental* module so we can iterate without
 locking the CLI into a heavy GUI stack.
 
