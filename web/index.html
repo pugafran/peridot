@@ -214,17 +214,61 @@
               </div>
             </section>
 
-            <section id="route-apply" class="hidden fade-in">
+            <section id="route-inspect" class="hidden fade-in">
               <div class="rounded-2xl border border-slate-800 bg-slate-900/25 p-6">
-                <div class="text-sm font-medium">Apply wizard (mock)</div>
-                <div class="text-xs text-slate-500 mt-1">Next: preview diff + confirm token flow.</div>
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm font-medium" data-i18n="nav.inspect">Inspect</div>
+                    <div class="text-xs text-slate-500 mt-1">Select a bundle and view its manifest (JSON).</div>
+                  </div>
+                  <button id="btnRefreshBundles" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-sm">Refresh</button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                  <div>
+                    <label class="block text-sm text-slate-300">Bundle path</label>
+                    <input id="inspectPath" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="C:\\path\\bundle.peridot" />
+                    <div class="text-xs text-slate-500 mt-2">Or pick from local bundles below.</div>
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Local bundles</label>
+                    <select id="bundleSelect" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2"></select>
+                    <div class="text-xs text-slate-500 mt-2">Includes history snapshots.</div>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2 mt-4">
+                  <button id="btnInspect" class="px-4 py-2 rounded-xl border border-sky-800 bg-sky-500/15 hover:bg-sky-500/25 transition text-sm text-sky-200">Inspect</button>
+                  <div id="inspectStatus" class="text-xs text-slate-400">idle</div>
+                </div>
+
+                <pre id="inspectOut" class="mt-4 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(no bundle)</pre>
               </div>
             </section>
 
-            <section id="route-inspect" class="hidden fade-in">
+            <section id="route-apply" class="hidden fade-in">
               <div class="rounded-2xl border border-slate-800 bg-slate-900/25 p-6">
-                <div class="text-sm font-medium">Inspect (mock)</div>
-                <div class="text-xs text-slate-500 mt-1">Next: manifest viewer + file list with filters.</div>
+                <div class="text-sm font-medium" data-i18n="nav.apply">Apply</div>
+                <div class="text-xs text-slate-500 mt-1">Plan (dry-run) first, then confirm apply token.</div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                  <div>
+                    <label class="block text-sm text-slate-300">Bundle path</label>
+                    <input id="applyPath" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="C:\\path\\bundle.peridot" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Target (optional)</label>
+                    <input id="applyTarget" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="C:\\Users\\you" />
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2 mt-4">
+                  <button id="btnApplyPlan" class="px-4 py-2 rounded-xl border border-amber-800 bg-amber-500/10 hover:bg-amber-500/20 transition text-sm text-amber-200">Plan</button>
+                  <button id="btnApplyRun" class="px-4 py-2 rounded-xl border border-emerald-800 bg-emerald-500/15 hover:bg-emerald-500/25 transition text-sm text-emerald-200" disabled>Apply</button>
+                  <div id="applyStatus" class="text-xs text-slate-400">idle</div>
+                </div>
+
+                <pre id="applyOut" class="mt-4 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(no plan)</pre>
               </div>
             </section>
           </div>

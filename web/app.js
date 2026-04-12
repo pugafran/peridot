@@ -348,6 +348,94 @@ async function boot() {
   $('#paletteOverlay').addEventListener('click', closePalette);
   $('#paletteInput').addEventListener('input', renderPalette);
 
+  // inspect
+  async function refreshBundles() {
+    try {
+      const data = await api('/api/bundles');
+      const sel = $('#bundleSelect');
+      sel.innerHTML = '';
+      const makeOpt = (item) => {
+        const opt = document.createElement('option');
+        opt.value = item.path;
+        opt.textContent = `${item.name} · ${item.source}`;
+        return opt;
+      };
+      for (const it of data.items || []) sel.appendChild(makeOpt(it));
+      for (const it of (data.history || []).slice(0, 200)) sel.appendChild(makeOpt(it));
+    } catch (e) {
+      toastKey('toast.inspectFailed', { err: String(e) }, 'error');
+    }
+  }
+
+  $('#btnRefreshBundles')?.addEventListener('click', refreshBundles);
+  $('#bundleSelect')?.addEventListener('change', (e) => {
+    const v = e.target.value;
+    if (v) $('#inspectPath').value = v;
+  });
+  $('#btnInspect')?.addEventListener('click', async () => {
+    $('#inspectStatus').textContent = 'loading…';
+    try {
+      const p = ($('#inspectPath').value || '').trim();
+      const out = await api('/api/inspect?path=' + encodeURIComponent(p));
+      $('#inspectOut').textContent = JSON.stringify(out, null, 2);
+      $('#inspectStatus').textContent = 'ok';
+    } catch (e) {
+      $('#inspectStatus').textContent = 'error';
+      toastKey('toast.inspectFailed', { err: String(e) }, 'error');
+    }
+  });
+
+  // apply
+  let lastPlan = null;
+  $('#btnApplyPlan')?.addEventListener('click', async () => {
+    $('#applyStatus').textContent = 'planning…';
+    try {
+      const packagePath = ($('#applyPath').value || '').trim();
+      const target = ($('#applyTarget').value || '').trim();
+      lastPlan = await api('/api/apply/plan', {
+        method: 'POST',
+        body: JSON.stringify({ package: packagePath, target })
+      });
+      $('#applyOut').textContent = JSON.stringify(lastPlan, null, 2);
+      $('#applyStatus').textContent = 'planned';
+      $('#btnApplyRun').disabled = false;
+    } catch (e) {
+      $('#applyStatus').textContent = 'error';
+      toastKey('toast.applyPlanFailed', { err: String(e) }, 'error');
+    }
+  });
+
+  $('#btnApplyRun')?.addEventListener('click', async () => {
+    if (!lastPlan || !lastPlan.apply_token) {
+      toastKey('toast.applyRunFailed', { err: 'missing token' }, 'error');
+      return;
+    }
+    $('#applyStatus').textContent = 'applying…';
+    try {
+      const packagePath = ($('#applyPath').value || '').trim();
+      const target = ($('#applyTarget').value || '').trim();
+      const r = await api('/api/apply/run', {
+        method: 'POST',
+        body: JSON.stringify({ package: packagePath, target, apply_token: lastPlan.apply_token })
+      });
+      const es = new EventSource(`/api/jobs/${r.job_id}/events`);
+      es.onmessage = (ev) => {
+        const j = JSON.parse(ev.data);
+        $('#applyOut').textContent = JSON.stringify(j, null, 2);
+        if (j.status === 'done' || j.status === 'error') {
+          $('#applyStatus').textContent = j.status;
+          es.close();
+        }
+      };
+      es.onerror = () => {
+        es.close();
+      };
+    } catch (e) {
+      $('#applyStatus').textContent = 'error';
+      toastKey('toast.applyRunFailed', { err: String(e) }, 'error');
+    }
+  });
+
   // pack wizard buttons
   $('#packPrev').addEventListener('click', () => {
     const v = Math.max(1, Number($('#packStep').value) - 1);

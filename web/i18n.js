@@ -47,6 +47,9 @@ export const STRINGS = {
     'toast.packCompleted': 'Pack completed',
     'toast.packFailed': 'Pack failed: {err}',
     'toast.nameRequired': 'Bundle name required',
+    'toast.inspectFailed': 'Inspect failed: {err}',
+    'toast.applyPlanFailed': 'Plan failed: {err}',
+    'toast.applyRunFailed': 'Apply failed: {err}',
   },
   es: {
     'nav.dashboard': 'Dashboard',
@@ -93,6 +96,9 @@ export const STRINGS = {
     'toast.packCompleted': 'Bundle creado',
     'toast.packFailed': 'Fallo al empaquetar: {err}',
     'toast.nameRequired': 'Falta el nombre del bundle',
+    'toast.inspectFailed': 'Fallo al inspeccionar: {err}',
+    'toast.applyPlanFailed': 'Fallo al planificar: {err}',
+    'toast.applyRunFailed': 'Fallo al aplicar: {err}',
   },
 };
 

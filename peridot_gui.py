@@ -284,6 +284,105 @@ def create_app():
             "sensitive": sorted({e.relative_path.replace("\\", "/") for e in sensitive}),
         }
 
+    def _list_bundles_in_dir(dir_path: Path) -> list[dict[str, Any]]:
+        if not dir_path.exists() or not dir_path.is_dir():
+            return []
+        out = []
+        for p in sorted(dir_path.glob("*.peridot")):
+            try:
+                out.append({"path": str(p), "name": p.name, "bytes": p.stat().st_size, "source": "dir"})
+            except Exception:
+                out.append({"path": str(p), "name": p.name, "bytes": None, "source": "dir"})
+        return out
+
+    @app.get("/api/bundles")
+    def bundles(dir: str | None = None) -> dict[str, Any]:
+        """List local bundles.
+
+        - dir: optional directory to search for *.peridot (defaults to cwd).
+        Also includes history snapshots from Peridot history dir.
+        """
+
+        try:
+            import peridot as peridot_mod  # type: ignore
+
+            history_dir = getattr(peridot_mod, "DEFAULT_HISTORY_DIR", None)
+        except Exception:
+            history_dir = None
+
+        base = Path(dir).expanduser() if dir else Path.cwd()
+        items = _list_bundles_in_dir(base)
+
+        history_items: list[dict[str, Any]] = []
+        if history_dir:
+            try:
+                for p in sorted(Path(history_dir).glob("**/*.peridot")):
+                    history_items.append({"path": str(p), "name": p.name, "bytes": p.stat().st_size, "source": "history"})
+            except Exception:
+                history_items = []
+
+        return {"dir": str(base), "items": items, "history": history_items}
+
+    @app.get("/api/inspect")
+    def inspect_bundle(path: str) -> Any:
+        # Prefer CLI JSON.
+        try:
+            return _run_peridot_json(["inspect", path, "--json"])
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.post("/api/apply/plan")
+    def apply_plan(payload: dict[str, Any]) -> Any:
+        package = str(payload.get("package") or "")
+        target = str(payload.get("target") or "")
+        ignore_platform = bool(payload.get("ignore_platform") or False)
+        transactional = bool(payload.get("transactional") if payload.get("transactional") is not None else True)
+        verify = bool(payload.get("verify") if payload.get("verify") is not None else True)
+
+        if not package:
+            raise HTTPException(status_code=400, detail="package is required")
+        args = ["apply", package, "--dry-run", "--json"]
+        if target:
+            args.extend(["--target", target])
+        if ignore_platform:
+            args.append("--ignore-platform")
+        if not transactional:
+            args.append("--no-transactional")
+        if not verify:
+            args.append("--no-verify")
+        return _run_peridot_json(args)
+
+    @app.post("/api/apply/run")
+    def apply_run(payload: dict[str, Any]) -> dict[str, Any]:
+        package = str(payload.get("package") or "")
+        target = str(payload.get("target") or "")
+        apply_token = str(payload.get("apply_token") or "")
+        ignore_platform = bool(payload.get("ignore_platform") or False)
+        transactional = bool(payload.get("transactional") if payload.get("transactional") is not None else True)
+        verify = bool(payload.get("verify") if payload.get("verify") is not None else True)
+
+        if not package:
+            raise HTTPException(status_code=400, detail="package is required")
+        if not apply_token:
+            raise HTTPException(status_code=400, detail="apply_token is required")
+
+        args = ["apply", package, "--json", "--yes", "--apply-token", apply_token]
+        if target:
+            args.extend(["--target", target])
+        if ignore_platform:
+            args.append("--ignore-platform")
+        if not transactional:
+            args.append("--no-transactional")
+        if not verify:
+            args.append("--no-verify")
+
+        jid = str(uuid.uuid4())
+        job = Job(id=jid, kind="apply", status="queued", created_ts=time.time())
+        _JOBS[jid] = job
+        t = threading.Thread(target=_launch_job, args=(job, args), daemon=True)
+        t.start()
+        return {"job_id": jid}
+
     @app.post("/api/pack")
     def pack(payload: dict[str, Any]) -> dict[str, Any]:
         preset = str(payload.get("preset") or "").strip()
