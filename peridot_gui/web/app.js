@@ -519,6 +519,11 @@ async function boot() {
     state.lang = (state.meta.language || 'en').toLowerCase();
     // meta.version is raw `peridot --version` output (e.g. "peridot 0.4.7")
     $('#metaVersion').textContent = state.meta.version || 'unknown';
+    const gh = state.meta.gui && state.meta.gui.host ? state.meta.gui.host : '127.0.0.1';
+    const gp = state.meta.gui && state.meta.gui.port ? state.meta.gui.port : 8844;
+    const addr = `${gh}:${gp}`;
+    const metaAddr = $('#metaAddr');
+    if (metaAddr) metaAddr.textContent = addr;
 
     // Ensure we always have a preset selected so Pack never triggers
     // interactive CLI prompts (which will crash in GUI subprocess mode).

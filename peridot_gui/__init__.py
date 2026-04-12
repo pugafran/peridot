@@ -323,10 +323,18 @@ def create_app():
         except Exception:
             presets = []
 
+        gui_host = os.environ.get("PERIDOT_GUI_HOST", "127.0.0.1")
+        gui_port = int(os.environ.get("PERIDOT_GUI_PORT", "8844"))
+
         return {
             "version": peridot_version,
             "host": host,
             "language": language,
+            "gui": {
+                "host": gui_host,
+                "port": gui_port,
+                "base_url": f"http://{gui_host}:{gui_port}",
+            },
             "runtime": {
                 "os_name": os.name,
                 "sys_platform": sys.platform,
