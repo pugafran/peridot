@@ -237,7 +237,7 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
 # --- FastAPI app ---
 
 def create_app():
-    from fastapi import FastAPI, HTTPException
+    from fastapi import FastAPI, HTTPException, Request
     from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
     app = FastAPI(title="Peridot GUI (experimental)")
@@ -694,7 +694,7 @@ def create_app():
         }
 
     @app.get("/api/jobs/{job_id}/events")
-    async def job_events(job_id: str):
+    async def job_events(job_id: str, request: Request):
         """Server-Sent Events stream for job status.
 
         This is a simple streaming layer (not true per-file progress yet), but it
@@ -702,6 +702,10 @@ def create_app():
 
         Implemented as an async generator so we don't block the event loop
         (important for responsiveness, especially on Windows).
+
+        We also stop streaming promptly when the client disconnects; otherwise
+        some Windows browser/proxy setups can leave the server-side generator
+        running longer than needed.
         """
 
         job = _JOBS.get(job_id)
@@ -716,6 +720,13 @@ def create_app():
             # Hint to the browser how quickly to retry.
             yield b"retry: 1000\n\n"
             while True:
+                try:
+                    if await request.is_disconnected():
+                        return
+                except Exception:
+                    # best-effort: if we can't detect disconnect, keep streaming
+                    pass
+
                 j = _JOBS.get(job_id)
                 if not j:
                     yield b"event: done\ndata: {}\n\n"
