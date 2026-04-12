@@ -40,6 +40,46 @@ def test_pack_scan_validates_and_returns_shape():
     assert isinstance(j.get('sensitive'), list)
 
 
+def test_settings_endpoint_returns_path_and_settings_dict():
+    app = peridot_gui.create_app()
+    c = TestClient(app)
+    r = c.get('/api/settings')
+    assert r.status_code == 200
+    j = r.json()
+    assert 'settings_path' in j
+    assert isinstance(j.get('settings'), dict)
+
+
+def test_pack_endpoint_creates_job_and_job_status_is_queryable(monkeypatch):
+    # Avoid actually spawning the peridot CLI during tests.
+    def fake_launch_job(job, peridot_args):
+        job.status = 'done'
+        job.started_ts = time.time()
+        job.finished_ts = time.time()
+        job.result = {
+            'ok': True,
+            'output': 'C:/tmp/example.peridot',
+            'output_bytes': 123,
+        }
+
+    monkeypatch.setattr(peridot_gui, '_launch_job', fake_launch_job)
+
+    app = peridot_gui.create_app()
+    c = TestClient(app)
+
+    r = c.post('/api/pack', json={'name': 'test', 'paths': []})
+    assert r.status_code == 200
+    jid = r.json()['job_id']
+
+    r = c.get(f'/api/jobs/{jid}')
+    assert r.status_code == 200
+    j = r.json()
+    assert j['status'] in {'queued', 'running', 'done'}
+
+    # cleanup
+    peridot_gui._JOBS.pop(jid, None)
+
+
 def test_sse_events_stream_yields_json_messages():
     # Build a fake job and ensure we can stream at least one message.
     jid = 'test-job-1'
