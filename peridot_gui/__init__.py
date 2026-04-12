@@ -772,10 +772,25 @@ def create_app():
 
 
 def main() -> None:
+    # Friendly dependency errors (Windows-first): without these, the user gets a
+    # long traceback on first run.
+    missing = None
+    try:
+        import fastapi  # noqa: F401
+    except ModuleNotFoundError as exc:
+        missing = exc.name or "fastapi"
+
     try:
         import uvicorn
-    except ModuleNotFoundError:
-        sys.stderr.write("Missing dependency: uvicorn. Install with: python -m pip install -e '.[gui]'\n")
+    except ModuleNotFoundError as exc:
+        missing = missing or (exc.name or "uvicorn")
+
+    if missing:
+        sys.stderr.write(
+            "Missing dependency: "
+            + str(missing)
+            + ". Install with: python -m pip install -e '.[gui]'\n"
+        )
         raise SystemExit(1)
 
     host = os.environ.get("PERIDOT_GUI_HOST", "127.0.0.1")
