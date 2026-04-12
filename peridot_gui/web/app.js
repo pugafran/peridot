@@ -520,6 +520,13 @@ async function boot() {
     // meta.version is raw `peridot --version` output (e.g. "peridot 0.4.7")
     $('#metaVersion').textContent = state.meta.version || 'unknown';
 
+    // Ensure we always have a preset selected so Pack never triggers
+    // interactive CLI prompts (which will crash in GUI subprocess mode).
+    if (!state.preset) {
+      const first = (state.meta.presets && state.meta.presets[0] && state.meta.presets[0].key) ? state.meta.presets[0].key : '';
+      if (first) state.preset = first;
+    }
+
     // apply translations
     $$('[data-i18n]').forEach(el => {
       const key = el.getAttribute('data-i18n');

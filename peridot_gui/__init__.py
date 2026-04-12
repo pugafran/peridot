@@ -625,6 +625,8 @@ def create_app():
             raise HTTPException(status_code=400, detail="name is required")
 
         # If preset is provided, pass it through and let peridot resolve defaults.
+        # Safety: if the UI sends neither paths nor preset, Peridot CLI will
+        # attempt interactive prompts (which will crash in GUI subprocesses).
         out = payload.get("output")
         args = ["pack", name, "--json", "--yes"]
 
@@ -633,6 +635,8 @@ def create_app():
         expanded_paths = [_expand_path(p) for p in paths] if paths else []
         if expanded_paths:
             args.extend(expanded_paths)
+        elif not preset:
+            raise HTTPException(status_code=400, detail="preset is required when no paths are provided")
 
         for pat in excludes:
             args.extend(["--exclude", pat])
