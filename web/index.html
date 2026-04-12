@@ -180,6 +180,11 @@
                     <label class="block text-sm text-slate-300">Output (optional)</label>
                     <input id="packOutput" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="my-bundle.peridot" />
                   </div>
+                  <div class="mt-4">
+                    <label class="block text-sm text-slate-300">Exclude patterns (optional)</label>
+                    <textarea id="packExcludes" rows="2" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder=".ssh\n*.pem\nsecrets/*.json"></textarea>
+                    <div class="text-xs text-slate-500 mt-2">One per line (recommended). Used during scan and pack.</div>
+                  </div>
                 </div>
               </div>
 

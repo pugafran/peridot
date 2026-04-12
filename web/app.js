@@ -11,9 +11,9 @@ const state = {
     name: '',
     paths: [],
     output: '',
+    userExcludes: [],
     sensitive: [],
     sensitiveAllow: {},
-    excluded: [],
     scan: null,
     jobId: null,
     job: null,
@@ -142,7 +142,18 @@ function parsePathsInput(raw) {
   if (!text) return [];
   const hasNewline = /\r|\n/.test(text);
   const sep = hasNewline ? /\r?\n/ : (text.includes(';') ? ';' : ',');
-  const parts = hasNewline ? text.split(sep) : text.split(sep);
+  const parts = text.split(sep);
+  return parts.map(s => s.trim()).filter(Boolean);
+}
+
+function parsePatternsInput(raw) {
+  // For excludes we intentionally do NOT treat ';' as a separator by default,
+  // because Windows PATH-like strings often contain semicolons.
+  const text = (raw || '').trim();
+  if (!text) return [];
+  const hasNewline = /\r|\n/.test(text);
+  const sep = hasNewline ? /\r?\n/ : (text.includes(',') ? ',' : /\s+/);
+  const parts = text.split(sep);
   return parts.map(s => s.trim()).filter(Boolean);
 }
 
@@ -155,6 +166,7 @@ function renderPackWizard() {
   $('#packName').value = state.pack.name;
   $('#packPaths').value = state.pack.paths.join('\n');
   $('#packOutput').value = state.pack.output;
+  $('#packExcludes').value = (state.pack.userExcludes || []).join('\n');
 
   // presets
   const runtime = state.meta?.runtime || {};
@@ -239,12 +251,37 @@ function renderPackWizard() {
       const s = (i === 0) ? String(Math.round(v)) : v.toFixed(v >= 10 ? 1 : 2);
       return `${s} ${u[i]}`;
     };
-    const missing = (state.pack.scan.missing_paths || []).length;
+    const missingPaths = (state.pack.scan.missing_paths || []);
+    const missing = missingPaths.length;
     ssum.textContent = `Scan: ${files} files · ${fmtBytes(bytes)} · ${sensitive.length} sensitive` + (missing ? ` · ${missing} missing path(s)` : '');
+
+    if (missing) {
+      const wrap = document.createElement('div');
+      wrap.className = 'mt-3 rounded-xl border border-slate-800 bg-slate-950/30 p-3';
+      wrap.innerHTML = `
+        <div class="text-xs text-slate-300 font-medium">Missing paths</div>
+        <div class="text-[11px] text-slate-500 mt-1">These preset/default paths were not found on this machine (safe to ignore).</div>
+        <div class="mt-2 flex flex-col gap-1"></div>
+      `;
+      const list = wrap.querySelector('div.mt-2');
+      for (const mp of missingPaths.slice(0, 24)) {
+        const ln = document.createElement('div');
+        ln.className = 'text-xs text-slate-300 font-mono truncate';
+        ln.textContent = mp;
+        list.appendChild(ln);
+      }
+      if (missingPaths.length > 24) {
+        const ln = document.createElement('div');
+        ln.className = 'text-xs text-slate-500';
+        ln.textContent = `…and ${missingPaths.length - 24} more`;
+        list.appendChild(ln);
+      }
+      sbox.appendChild(wrap);
+    }
 
     if (!sensitive.length) {
       const msg = document.createElement('div');
-      msg.className = 'text-xs text-slate-400';
+      msg.className = 'text-xs text-slate-400 mt-3';
       msg.textContent = 'No sensitive paths detected in this scan.';
       sbox.appendChild(msg);
     }
@@ -284,25 +321,28 @@ async function startPackJob() {
   const name = ($('#packName').value || '').trim();
   const paths = parsePathsInput($('#packPaths').value || '');
   const output = ($('#packOutput').value || '').trim();
+  const userExcludes = parsePatternsInput($('#packExcludes').value || '');
   if (!name) return toastKey('toast.nameRequired', {}, 'error');
   state.pack.name = name;
   state.pack.paths = paths;
   state.pack.output = output;
+  state.pack.userExcludes = userExcludes;
 
   $('#packRunBtn').disabled = true;
   $('#packRunBtn').classList.add('opacity-60');
   $('#packRunStatus').textContent = t(state.lang, 'status.starting');
 
   try {
-    // Convert sensitive toggles into excludes (default exclude sensitive paths).
+    // Convert sensitive toggles into excludes (default exclude sensitive paths),
+    // and merge with user-supplied exclude patterns.
     const excludes = [];
+    for (const pat of (state.pack.userExcludes || [])) excludes.push(pat);
     for (const sp of (state.pack.scan?.sensitive || [])) {
-      if (!state.pack.sensitiveAllow[sp]) {
-        excludes.push(sp);
-      }
+      if (!state.pack.sensitiveAllow[sp]) excludes.push(sp);
     }
+    const uniq = Array.from(new Set(excludes));
 
-    const body = { name, paths, preset: state.preset, excludes };
+    const body = { name, paths, preset: state.preset, excludes: uniq };
     if (output) body.output = output;
     const r = await api('/api/pack', { method: 'POST', body: JSON.stringify(body) });
     state.pack.jobId = r.job_id;
@@ -531,12 +571,13 @@ async function boot() {
     state.pack.name = ($('#packName').value||'').trim();
     state.pack.paths = parsePathsInput($('#packPaths').value||'');
     state.pack.output = ($('#packOutput').value||'').trim();
+    state.pack.userExcludes = parsePatternsInput($('#packExcludes').value||'');
 
     // entering sensitive step: run scan
     if (v === 3) {
       try {
         toastKey('toast.scan');
-        state.pack.scan = await api('/api/pack/scan', { method: 'POST', body: JSON.stringify({ preset: state.preset, paths: state.pack.paths, excludes: (state.pack.excluded || []) }) });
+        state.pack.scan = await api('/api/pack/scan', { method: 'POST', body: JSON.stringify({ preset: state.preset, paths: state.pack.paths, excludes: (state.pack.userExcludes || []) }) });
         // initialize sensitive allow map (default exclude)
         state.pack.sensitiveAllow = {};
         for (const p of (state.pack.scan.sensitive || [])) state.pack.sensitiveAllow[p] = false;
