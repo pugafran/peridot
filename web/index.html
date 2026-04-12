@@ -171,9 +171,9 @@
                       <input id="packName" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="my-bundle" />
                     </div>
                     <div class="md:col-span-2">
-                      <label class="block text-sm text-slate-300">Paths (comma separated)</label>
-                      <input id="packPaths" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="~/.config, ~/.gitconfig" />
-                      <div class="text-xs text-slate-500 mt-2">Next step will scan paths and show sensitive files before creating the bundle.</div>
+                      <label class="block text-sm text-slate-300">Paths</label>
+                      <textarea id="packPaths" rows="3" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="~/.config\n~/.gitconfig"></textarea>
+                      <div class="text-xs text-slate-500 mt-2">One per line (recommended). Also accepts <span class="text-slate-300">;</span> or <span class="text-slate-300">,</span> separators.</div>
                     </div>
                   </div>
                   <div class="mt-4">
@@ -195,7 +195,8 @@
                       <button id="sensIncludeAll" class="px-3 py-2 rounded-xl border border-amber-800 bg-amber-500/10 hover:bg-amber-500/20 transition text-xs text-amber-200">Include all</button>
                     </div>
                   </div>
-                  <div id="sensitiveList" class="mt-4 flex flex-col gap-2"></div>
+                  <div id="scanSummary" class="mt-4 text-xs text-slate-400"></div>
+                  <div id="sensitiveList" class="mt-3 flex flex-col gap-2"></div>
                 </div>
               </div>
 
@@ -210,8 +211,8 @@
                   </div>
                   <div class="text-xs text-slate-400 mt-3" id="packRunStatus">idle</div>
                   <div class="flex items-center gap-2 mt-3">
-                    <button id="btnPackReveal" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-xs" disabled>Reveal</button>
-                    <button id="btnPackCopy" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-xs" disabled>Copy path</button>
+                    <button id="btnPackReveal" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-xs" data-i18n="gui.reveal" disabled>Reveal</button>
+                    <button id="btnPackCopy" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-xs" data-i18n="gui.copyPath" disabled>Copy path</button>
                   </div>
                   <pre id="packJob" class="mt-4 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(no job)</pre>
                 </div>
@@ -243,8 +244,8 @@
 
                 <div class="flex items-center gap-2 mt-4">
                   <button id="btnInspect" class="px-4 py-2 rounded-xl border border-sky-800 bg-sky-500/15 hover:bg-sky-500/25 transition text-sm text-sky-200">Inspect</button>
-                  <button id="btnInspectReveal" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-sm" disabled>Reveal</button>
-                  <button id="btnInspectCopy" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-sm" disabled>Copy path</button>
+                  <button id="btnInspectReveal" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-sm" data-i18n="gui.reveal" disabled>Reveal</button>
+                  <button id="btnInspectCopy" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-sm" data-i18n="gui.copyPath" disabled>Copy path</button>
                   <div id="inspectStatus" class="text-xs text-slate-400">idle</div>
                 </div>
 

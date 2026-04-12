@@ -50,6 +50,9 @@ export const STRINGS = {
     'toast.inspectFailed': 'Inspect failed: {err}',
     'toast.applyPlanFailed': 'Plan failed: {err}',
     'toast.applyRunFailed': 'Apply failed: {err}',
+    'toast.copied': 'Copied',
+    'gui.reveal': 'Reveal',
+    'gui.copyPath': 'Copy path',
   },
   es: {
     'nav.dashboard': 'Dashboard',
@@ -99,6 +102,9 @@ export const STRINGS = {
     'toast.inspectFailed': 'Fallo al inspeccionar: {err}',
     'toast.applyPlanFailed': 'Fallo al planificar: {err}',
     'toast.applyRunFailed': 'Fallo al aplicar: {err}',
+    'toast.copied': 'Copiado',
+    'gui.reveal': 'Mostrar',
+    'gui.copyPath': 'Copiar ruta',
   },
 };
 

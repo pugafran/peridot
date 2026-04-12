@@ -137,6 +137,15 @@ async function renderSettings() {
   }
 }
 
+function parsePathsInput(raw) {
+  const text = (raw || '').trim();
+  if (!text) return [];
+  const hasNewline = /\r|\n/.test(text);
+  const sep = hasNewline ? /\r?\n/ : (text.includes(';') ? ';' : ',');
+  const parts = hasNewline ? text.split(sep) : text.split(sep);
+  return parts.map(s => s.trim()).filter(Boolean);
+}
+
 function renderPackWizard() {
   // step visibility
   const step = Number($('#packStep').value);
@@ -144,7 +153,7 @@ function renderPackWizard() {
   $('#pack-step-'+step)?.classList.remove('hidden');
 
   $('#packName').value = state.pack.name;
-  $('#packPaths').value = state.pack.paths.join(', ');
+  $('#packPaths').value = state.pack.paths.join('\n');
   $('#packOutput').value = state.pack.output;
 
   // presets
@@ -187,22 +196,41 @@ function renderPackWizard() {
     grid.appendChild(btn);
   }
 
+  const ssum = $('#scanSummary');
   const sbox = $('#sensitiveList');
+  ssum.textContent = '';
   sbox.innerHTML = '';
+
   const sensitivePaths = state.pack.scan?.sensitive || [];
   const sensitive = sensitivePaths.map(p => ({ path: p, reason: 'Sensitive path detected' }));
   state.pack.sensitive = sensitive;
 
   if (!state.pack.scan) {
+    ssum.textContent = 'Not scanned yet.';
     const msg = document.createElement('div');
     msg.className = 'text-xs text-slate-500';
     msg.textContent = 'Run the scan (Next) to list sensitive paths.';
     sbox.appendChild(msg);
-  } else if (!sensitive.length) {
-    const msg = document.createElement('div');
-    msg.className = 'text-xs text-slate-400';
-    msg.textContent = 'No sensitive paths detected in this scan.';
-    sbox.appendChild(msg);
+  } else {
+    const files = state.pack.scan.files ?? 0;
+    const bytes = state.pack.scan.bytes ?? 0;
+    const fmtBytes = (n) => {
+      if (!n) return '0 B';
+      const u = ['B','KB','MB','GB','TB'];
+      let i = 0;
+      let v = n;
+      while (v >= 1024 && i < u.length-1) { v /= 1024; i++; }
+      const s = (i === 0) ? String(Math.round(v)) : v.toFixed(v >= 10 ? 1 : 2);
+      return `${s} ${u[i]}`;
+    };
+    ssum.textContent = `Scan: ${files} files · ${fmtBytes(bytes)} · ${sensitive.length} sensitive`;
+
+    if (!sensitive.length) {
+      const msg = document.createElement('div');
+      msg.className = 'text-xs text-slate-400';
+      msg.textContent = 'No sensitive paths detected in this scan.';
+      sbox.appendChild(msg);
+    }
   }
 
   for (const item of sensitive) {
@@ -237,7 +265,7 @@ function renderPackWizard() {
 
 async function startPackJob() {
   const name = ($('#packName').value || '').trim();
-  const paths = ($('#packPaths').value || '').split(',').map(s => s.trim()).filter(Boolean);
+  const paths = parsePathsInput($('#packPaths').value || '');
   const output = ($('#packOutput').value || '').trim();
   if (!name) return toastKey('toast.nameRequired', {}, 'error');
   state.pack.name = name;
@@ -278,7 +306,7 @@ async function startPackJob() {
             $('#btnPackReveal').onclick = async () => {
               try { await revealPath(outputPath); } catch (e) { toast(String(e), 'error'); }
             };
-            $('#btnPackCopy').onclick = () => { if (setClipboard(outputPath)) toast('copied'); };
+            $('#btnPackCopy').onclick = () => { if (setClipboard(outputPath)) toastKey('toast.copied'); };
           }
 
           const p = j.result && j.result.progress;
@@ -419,7 +447,7 @@ async function boot() {
   $('#btnInspectCopy')?.addEventListener('click', async () => {
     const p = ($('#inspectPath').value || '').trim();
     if (!p) return;
-    if (setClipboard(p)) toast('copied');
+    if (setClipboard(p)) toastKey('toast.copied');
   });
 
   // apply
@@ -484,7 +512,7 @@ async function boot() {
     const v = Math.min(4, current + 1);
     // persist fields
     state.pack.name = ($('#packName').value||'').trim();
-    state.pack.paths = ($('#packPaths').value||'').split(',').map(s=>s.trim()).filter(Boolean);
+    state.pack.paths = parsePathsInput($('#packPaths').value||'');
     state.pack.output = ($('#packOutput').value||'').trim();
 
     // entering sensitive step: run scan
@@ -516,6 +544,10 @@ async function boot() {
     toastKey('toast.includingAllSensitive', {}, 'warn');
     renderPackWizard();
   });
+
+  // expose refresh hooks for buttons
+  window.__refreshDoctor = () => renderDoctor();
+  window.__refreshSettings = () => renderSettings();
 
   render();
 }
