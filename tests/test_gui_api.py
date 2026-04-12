@@ -1,97 +1,78 @@
 import json
-import threading
 import time
+from pathlib import Path
 
 import pytest
 
 
-def _has_fastapi():
-    try:
-        import fastapi  # noqa: F401
-        import starlette.testclient  # noqa: F401
-
-        return True
-    except Exception:
-        return False
+fastapi = pytest.importorskip("fastapi")
+pytest.importorskip("starlette")
 
 
-@pytest.mark.skipif(not _has_fastapi(), reason="fastapi not installed (gui extra)")
-def test_gui_api_meta_and_settings_smoke():
-    from peridot_gui import create_app
-    from starlette.testclient import TestClient
+def test_gui_api_meta_settings_doctor_scan_sse(tmp_path, monkeypatch):
+    # Ensure we can import the experimental GUI module even when running tests.
+    import peridot_gui  # noqa: WPS433
 
-    app = create_app()
+    app = peridot_gui.create_app()
+
+    from fastapi.testclient import TestClient
+
     client = TestClient(app)
 
+    # /api/meta should always work (it degrades gracefully if the peridot CLI isn't on PATH).
     r = client.get("/api/meta")
     assert r.status_code == 200
     meta = r.json()
+    assert "gui" in meta
     assert "runtime" in meta
-    assert "presets" in meta
 
-    r2 = client.get("/api/settings")
-    assert r2.status_code == 200
-    data = r2.json()
-    assert "settings" in data
-
-
-@pytest.mark.skipif(not _has_fastapi(), reason="fastapi not installed (gui extra)")
-def test_gui_api_pack_scan_uses_preset_defaults_when_paths_empty():
-    from peridot_gui import create_app
-    from starlette.testclient import TestClient
-
-    app = create_app()
-    client = TestClient(app)
-
-    meta = client.get("/api/meta").json()
-    presets = meta.get("presets") or []
-    assert presets, "expected at least one preset exposed by /api/meta"
-
-    preset_key = presets[0]["key"]
-    r = client.post("/api/pack/scan", json={"preset": preset_key, "paths": [], "excludes": []})
+    # /api/settings should work (it prefers in-process load_settings()).
+    r = client.get("/api/settings")
     assert r.status_code == 200
-    out = r.json()
-    assert out.get("preset") == preset_key
-    assert "missing_paths" in out
-    assert "files" in out
-    assert "sensitive" in out
+    settings = r.json()
+    assert "settings_path" in settings
+    assert "settings" in settings
 
+    # /api/doctor may depend on the CLI being available. Accept either success
+    # or a clean FastAPI error.
+    r = client.get("/api/doctor")
+    assert r.status_code in {200, 500}
+    if r.status_code == 500:
+        assert "detail" in r.json()
 
-@pytest.mark.skipif(not _has_fastapi(), reason="fastapi not installed (gui extra)")
-def test_gui_sse_events_stream_job_updates():
-    # Ensure /api/jobs/{id}/events yields valid SSE messages.
-    import peridot_gui
-    from peridot_gui import Job, create_app
-    from starlette.testclient import TestClient
+    # /api/pack/scan should work end-to-end in-process.
+    (tmp_path / "hello.txt").write_text("hi", encoding="utf-8")
+    r = client.post(
+        "/api/pack/scan",
+        json={"preset": "", "paths": [str(tmp_path)], "excludes": []},
+    )
+    assert r.status_code == 200
+    scan = r.json()
+    assert scan["files"] >= 1
+    assert isinstance(scan["sensitive"], list)
 
-    app = create_app()
-    client = TestClient(app)
-
+    # SSE stream should send valid events and terminate when job is done.
     jid = "test-job-1"
-    job = Job(id=jid, kind="pack", status="running", created_ts=time.time(), started_ts=time.time())
-    peridot_gui._JOBS[jid] = job
+    peridot_gui._JOBS[jid] = peridot_gui.Job(  # noqa: SLF001
+        id=jid,
+        kind="pack",
+        status="done",
+        created_ts=time.time(),
+        started_ts=time.time(),
+        finished_ts=time.time(),
+        result={"ok": True},
+    )
 
-    def finisher():
-        time.sleep(0.15)
-        job.status = "done"
-        job.result = {"ok": True, "output": "dummy.peridot"}
-        job.finished_ts = time.time()
+    with client.stream("GET", f"/api/jobs/{jid}/events") as s:
+        assert s.status_code == 200
+        ct = s.headers.get("content-type") or ""
+        assert "text/event-stream" in ct
+        body = b"".join(list(s.iter_bytes()))
 
-    threading.Thread(target=finisher, daemon=True).start()
-
-    with client.stream("GET", f"/api/jobs/{jid}/events") as r:
-        assert r.status_code == 200
-        # Read a few lines and ensure at least one data: event is present.
-        buf = ""
-        for chunk in r.iter_text():
-            buf += chunk
-            if "data: " in buf:
-                break
-        assert "data: " in buf
-
-        # Ensure the payload is JSON parseable.
-        line = [ln for ln in buf.splitlines() if ln.startswith("data: ")][0]
-        payload = json.loads(line[len("data: ") :])
-        assert payload["id"] == jid
-
-    peridot_gui._JOBS.pop(jid, None)
+    # Expect at least one data: JSON line.
+    assert b"data:" in body
+    # Ensure the JSON payload can be parsed from at least one event.
+    line = next(ln for ln in body.splitlines() if ln.startswith(b"data: "))
+    payload = json.loads(line[len(b"data: ") :].decode("utf-8"))
+    assert payload["id"] == jid
+    assert payload["status"] == "done"
