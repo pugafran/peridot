@@ -707,7 +707,7 @@ async function boot() {
   });
   $('#packNext').addEventListener('click', async () => {
     const current = Number($('#packStep').value);
-    const v = Math.min(4, current + 1);
+    const next = Math.min(4, current + 1);
     // persist fields
     state.pack.name = ($('#packName').value||'').trim();
     state.pack.paths = parsePathsInput($('#packPaths').value||'');
@@ -715,7 +715,7 @@ async function boot() {
     state.pack.userExcludes = parsePatternsInput($('#packExcludes').value||'');
 
     // entering sensitive step: run scan
-    if (v === 3) {
+    if (next === 3) {
       try {
         toastKey('toast.scan');
         state.pack.scan = await api('/api/pack/scan', { method: 'POST', body: JSON.stringify({ preset: state.preset, paths: state.pack.paths, excludes: (state.pack.userExcludes || []) }) });
@@ -723,11 +723,13 @@ async function boot() {
         state.pack.sensitiveAllow = {};
         for (const p of (state.pack.scan.sensitive || [])) state.pack.sensitiveAllow[p] = false;
       } catch (e) {
+        // If scanning fails, keep the user on the current step so they can fix inputs.
         toastKey('toast.scanFailed', { err: String(e) }, 'error');
+        return;
       }
     }
 
-    $('#packStep').value = String(v);
+    $('#packStep').value = String(next);
     renderPackWizard();
   });
   $('#packRunBtn').addEventListener('click', () => startPackJob());
