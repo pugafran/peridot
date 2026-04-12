@@ -12,7 +12,14 @@ from fastapi.testclient import TestClient  # noqa: E402
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     # Use the in-repo module rather than requiring an installed `peridot` binary.
-    monkeypatch.setenv("PERIDOT_EXE", "python3 -m peridot")
+    import sys
+
+    # Windows-first: avoid hardcoding `python3` which doesn't exist on Windows.
+    # Also quote sys.executable because it may contain spaces (e.g. Program Files).
+    exe = sys.executable
+    if " " in exe and not (exe.startswith('"') and exe.endswith('"')):
+        exe = f"\"{exe}\""
+    monkeypatch.setenv("PERIDOT_EXE", f"{exe} -m peridot")
 
     # Ensure pack outputs go to the temp dir if the test triggers a pack.
     monkeypatch.chdir(tmp_path)
