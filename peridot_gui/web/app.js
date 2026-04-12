@@ -13,10 +13,33 @@ function fmtBytes(n) {
   return `${x.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-function setClipboard(text) {
+async function setClipboard(text) {
+  const v = String(text ?? '');
+  if (!v) return false;
+
+  // navigator.clipboard is async and may throw/reject depending on permissions.
   try {
-    navigator.clipboard.writeText(text);
-    return true;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(v);
+      return true;
+    }
+  } catch {
+    // fall through to legacy path
+  }
+
+  // Legacy fallback (works in more contexts, including some local-file setups).
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = v;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.top = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return !!ok;
   } catch {
     return false;
   }
@@ -413,7 +436,7 @@ async function startPackJob() {
             $('#btnPackReveal').onclick = async () => {
               try { await revealPath(outputPath); } catch (e) { toast(String(e), 'error'); }
             };
-            $('#btnPackCopy').onclick = () => { if (setClipboard(outputPath)) toastKey('toast.copied'); };
+            $('#btnPackCopy').onclick = async () => { if (await setClipboard(outputPath)) toastKey('toast.copied'); };
           }
 
           const p = j.result && j.result.progress;
@@ -600,7 +623,7 @@ async function boot() {
   $('#btnInspectCopy')?.addEventListener('click', async () => {
     const p = ($('#inspectPath').value || '').trim();
     if (!p) return;
-    if (setClipboard(p)) toastKey('toast.copied');
+    if (await setClipboard(p)) toastKey('toast.copied');
   });
 
   // apply
