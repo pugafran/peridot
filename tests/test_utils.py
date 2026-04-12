@@ -265,6 +265,7 @@ def test_should_exclude_entry_filters_common_basenames_outside_home(tmp_path):
     assert peridot.should_exclude_entry(tmp_path / ".DS_Store") is True
     assert peridot.should_exclude_entry(tmp_path / ".cache" / "foo.txt") is True
     assert peridot.should_exclude_entry(tmp_path / ".git" / "config") is True
+    assert peridot.should_exclude_entry(tmp_path / ".idea" / "workspace.xml") is True
     assert peridot.should_exclude_entry(tmp_path / "regular" / "file.txt") is False
     # Ensure we don't accidentally exclude dotfiles that merely *contain* the token.
     assert peridot.should_exclude_entry(tmp_path / ".gitconfig") is False

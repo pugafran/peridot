@@ -181,6 +181,7 @@ DEFAULT_EXCLUDES = {
     ".mypy_cache",
     ".ruff_cache",
     "node_modules",
+    ".idea",
 }
 SENSITIVE_PATTERNS = (
     "id_rsa",
