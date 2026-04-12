@@ -396,13 +396,28 @@ async function startPackJob() {
           const p = j.result && j.result.progress;
           if (p && p.type === 'pack_progress') {
             const pct = p.bytes_total ? Math.min(100, Math.round((p.bytes_done / p.bytes_total) * 100)) : Math.min(100, Math.round((p.files_done / p.files_total) * 100));
+            $('#packProgressBar').style.width = `${pct}%`;
             $('#packRunStatus').textContent = `packing ${pct}% · ${p.files_done}/${p.files_total}`;
           } else if (p && p.type === 'scan_progress') {
+            $('#packProgressBar').style.width = '10%';
             $('#packRunStatus').textContent = `scanning · ${p.files || 0} files`;
           } else if (p && p.type === 'scan_done') {
+            $('#packProgressBar').style.width = '20%';
             $('#packRunStatus').textContent = `scanned · ${p.files || 0} files`;
           } else if (p && p.type === 'pack_done') {
+            $('#packProgressBar').style.width = '95%';
             $('#packRunStatus').textContent = t(state.lang, 'status.finalizing');
+          }
+
+          if (j.status === 'done' && j.result && j.result.output) {
+            const out = j.result.output;
+            const bytes = j.result.output_bytes ? fmtBytes(j.result.output_bytes) : '';
+            $('#packSummary').textContent = `output: ${out}${bytes ? ' · ' + bytes : ''}`;
+            $('#packProgressBar').style.width = '100%';
+          }
+          if (j.status === 'error') {
+            $('#packSummary').textContent = `error: ${j.error || ''}`;
+            $('#packProgressBar').style.width = '100%';
           }
 
           $('#packJob').textContent = JSON.stringify(j, null, 2);
@@ -423,8 +438,22 @@ async function startPackJob() {
         const j = await api(`/api/jobs/${state.pack.jobId}`);
         state.pack.job = j;
         $('#packJob').textContent = JSON.stringify(j, null, 2);
-        if (j.status === 'done') { toast('Pack completed', 'info'); break; }
-        if (j.status === 'error') { toast('Pack failed: ' + (j.error||''), 'error'); break; }
+        if (j.status === 'done') {
+          if (j.result && j.result.output) {
+            const out = j.result.output;
+            const bytes = j.result.output_bytes ? fmtBytes(j.result.output_bytes) : '';
+            $('#packSummary').textContent = `output: ${out}${bytes ? ' · ' + bytes : ''}`;
+            $('#packProgressBar').style.width = '100%';
+          }
+          toastKey('toast.packCompleted', {}, 'info');
+          break;
+        }
+        if (j.status === 'error') {
+          $('#packSummary').textContent = `error: ${j.error || ''}`;
+          $('#packProgressBar').style.width = '100%';
+          toastKey('toast.packFailed', { err: (j.error||'') }, 'error');
+          break;
+        }
         await sleep(900);
       }
     }
@@ -516,12 +545,39 @@ async function boot() {
     await api('/api/os/reveal', { method: 'POST', body: JSON.stringify({ path }) });
   }
 
+  function safeGet(obj, path, fallback = null) {
+    try {
+      return path.split('.').reduce((acc, k) => (acc && acc[k] !== undefined ? acc[k] : undefined), obj) ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function fmtBytes(n) {
+    const v = Number(n || 0);
+    if (!Number.isFinite(v)) return '';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let x = v;
+    let i = 0;
+    while (x >= 1024 && i < units.length - 1) { x /= 1024; i++; }
+    return `${x.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+  }
+
   $('#btnInspect')?.addEventListener('click', async () => {
     $('#inspectStatus').textContent = 'loading…';
     try {
       const p = ($('#inspectPath').value || '').trim();
       const out = await api('/api/inspect?path=' + encodeURIComponent(p));
       $('#inspectOut').textContent = JSON.stringify(out, null, 2);
+
+      const name = safeGet(out, 'bundle.name', '(unknown)');
+      const created = safeGet(out, 'bundle.created_at', '');
+      const files = Array.isArray(out.files) ? out.files.length : 0;
+      const totalBytes = Array.isArray(out.files) ? out.files.reduce((acc, e) => acc + Number(e.size || 0), 0) : 0;
+      const compat = safeGet(out, 'platform.os', '') ? `${safeGet(out, 'platform.os', '')}/${safeGet(out, 'platform.shell', '')}` : '';
+
+      $('#inspectSummary').textContent = `${name} · ${files} files · ${fmtBytes(totalBytes)}${created ? ' · ' + created : ''}${compat ? ' · ' + compat : ''}`;
+
       $('#inspectStatus').textContent = 'ok';
       $('#btnInspectReveal').disabled = !p;
       $('#btnInspectCopy').disabled = !p;
@@ -547,6 +603,7 @@ async function boot() {
   let lastPlan = null;
   $('#btnApplyPlan')?.addEventListener('click', async () => {
     $('#applyStatus').textContent = 'planning…';
+    $('#applyProgressBar').style.width = '0%';
     try {
       const packagePath = ($('#applyPath').value || '').trim();
       const target = ($('#applyTarget').value || '').trim();
@@ -555,8 +612,17 @@ async function boot() {
         body: JSON.stringify({ package: packagePath, target })
       });
       $('#applyOut').textContent = JSON.stringify(lastPlan, null, 2);
+
+      const plan = Array.isArray(lastPlan.plan) ? lastPlan.plan : [];
+      const creates = plan.filter(p => p.action === 'create').length;
+      const overwrites = plan.filter(p => p.action === 'overwrite').length;
+      const bytes = plan.reduce((acc, p) => acc + Number(p.size || 0), 0);
+      const compat = lastPlan.compatible === false ? `WARNING: ${lastPlan.compatibility_message || 'platform mismatch'}` : 'compatible';
+      $('#applySummary').textContent = `${compat} · ${plan.length} changes (${creates} create, ${overwrites} overwrite) · ${fmtBytes(bytes)}`;
+
       $('#applyStatus').textContent = 'planned';
       $('#btnApplyRun').disabled = false;
+      $('#applyProgressBar').style.width = '15%';
     } catch (e) {
       $('#applyStatus').textContent = 'error';
       toastKey('toast.applyPlanFailed', { err: String(e) }, 'error');
@@ -580,6 +646,23 @@ async function boot() {
       es.onmessage = (ev) => {
         const j = JSON.parse(ev.data);
         $('#applyOut').textContent = JSON.stringify(j, null, 2);
+
+        const pct = j.result && j.result.progress && typeof j.result.progress.percent === 'number' ? j.result.progress.percent : null;
+        if (pct !== null) {
+          $('#applyProgressBar').style.width = `${Math.max(0, Math.min(100, pct))}%`;
+        } else {
+          // best-effort: show activity
+          if (j.status === 'running') $('#applyProgressBar').style.width = '50%';
+        }
+
+        if (j.status === 'done') {
+          $('#applySummary').textContent = 'done';
+          $('#applyProgressBar').style.width = '100%';
+        } else if (j.status === 'error') {
+          $('#applySummary').textContent = `error: ${j.error || ''}`;
+          $('#applyProgressBar').style.width = '100%';
+        }
+
         if (j.status === 'done' || j.status === 'error') {
           $('#applyStatus').textContent = j.status;
           es.close();

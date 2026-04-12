@@ -219,7 +219,17 @@
                     <button id="btnPackReveal" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-xs" data-i18n="gui.reveal" disabled>Reveal</button>
                     <button id="btnPackCopy" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-xs" data-i18n="gui.copyPath" disabled>Copy path</button>
                   </div>
-                  <pre id="packJob" class="mt-4 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(no job)</pre>
+                  <div class="mt-4 rounded-xl border border-slate-800 bg-slate-950/20 p-3">
+                    <div class="text-xs text-slate-400" id="packSummary">(no results yet)</div>
+                    <div class="mt-2 h-2 rounded-full bg-slate-800 overflow-hidden">
+                      <div id="packProgressBar" class="h-2 bg-emerald-600/60" style="width:0%"></div>
+                    </div>
+                  </div>
+
+                  <details class="mt-3">
+                    <summary class="cursor-pointer text-xs text-slate-400 hover:text-slate-200">Details (JSON)</summary>
+                    <pre id="packJob" class="mt-2 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(no job)</pre>
+                  </details>
                 </div>
               </div>
             </section>
@@ -254,7 +264,14 @@
                   <div id="inspectStatus" class="text-xs text-slate-400">idle</div>
                 </div>
 
-                <pre id="inspectOut" class="mt-4 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(no bundle)</pre>
+                <div class="mt-4 rounded-xl border border-slate-800 bg-slate-950/20 p-3">
+                  <div class="text-xs text-slate-400" id="inspectSummary">(no bundle)</div>
+                </div>
+
+                <details class="mt-3">
+                  <summary class="cursor-pointer text-xs text-slate-400 hover:text-slate-200">Details (JSON)</summary>
+                  <pre id="inspectOut" class="mt-2 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(no bundle)</pre>
+                </details>
               </div>
             </section>
 
@@ -280,7 +297,17 @@
                   <div id="applyStatus" class="text-xs text-slate-400">idle</div>
                 </div>
 
-                <pre id="applyOut" class="mt-4 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(no plan)</pre>
+                <div class="mt-4 rounded-xl border border-slate-800 bg-slate-950/20 p-3">
+                  <div class="text-xs text-slate-400" id="applySummary">(no plan)</div>
+                  <div class="mt-2 h-2 rounded-full bg-slate-800 overflow-hidden">
+                    <div id="applyProgressBar" class="h-2 bg-amber-600/60" style="width:0%"></div>
+                  </div>
+                </div>
+
+                <details class="mt-3">
+                  <summary class="cursor-pointer text-xs text-slate-400 hover:text-slate-200">Details (JSON)</summary>
+                  <pre id="applyOut" class="mt-2 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(no plan)</pre>
+                </details>
               </div>
             </section>
           </div>
