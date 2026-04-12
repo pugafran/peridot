@@ -158,8 +158,14 @@ def create_app():
 
     @app.get("/web/{asset}")
     def web_asset(asset: str):
+        # Windows-friendly path guard:
+        # - Avoid naive string prefix checks (case/sep issues on Windows)
+        # - Ensure the resolved asset stays within web_root
+        root = web_root.resolve()
         path = (web_root / asset).resolve()
-        if not str(path).startswith(str(web_root.resolve())):
+        try:
+            path.relative_to(root)
+        except Exception:
             raise HTTPException(status_code=400, detail="invalid asset")
         if not path.exists() or not path.is_file():
             raise HTTPException(status_code=404, detail="not found")
@@ -351,6 +357,35 @@ def create_app():
         if not verify:
             args.append("--no-verify")
         return _run_peridot_json(args)
+
+    def _open_path(target: Path) -> None:
+        # Best-effort cross-platform open/reveal.
+        if os.name == "nt":
+            os.startfile(str(target))  # type: ignore[attr-defined]
+            return
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", str(target)])
+            return
+        subprocess.Popen(["xdg-open", str(target)])
+
+    @app.post("/api/os/open")
+    def os_open(payload: dict[str, Any]) -> dict[str, Any]:
+        path = str(payload.get("path") or "").strip()
+        if not path:
+            raise HTTPException(status_code=400, detail="path is required")
+        p = Path(path).expanduser()
+        _open_path(p)
+        return {"ok": True}
+
+    @app.post("/api/os/reveal")
+    def os_reveal(payload: dict[str, Any]) -> dict[str, Any]:
+        path = str(payload.get("path") or "").strip()
+        if not path:
+            raise HTTPException(status_code=400, detail="path is required")
+        p = Path(path).expanduser()
+        target = p if p.is_dir() else p.parent
+        _open_path(target)
+        return {"ok": True}
 
     @app.post("/api/apply/run")
     def apply_run(payload: dict[str, Any]) -> dict[str, Any]:

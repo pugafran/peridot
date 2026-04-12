@@ -271,6 +271,16 @@ async function startPackJob() {
           const j = JSON.parse(ev.data);
           state.pack.job = j;
 
+          const outputPath = j.result && j.result.output;
+          if (outputPath) {
+            $('#btnPackReveal').disabled = false;
+            $('#btnPackCopy').disabled = false;
+            $('#btnPackReveal').onclick = async () => {
+              try { await revealPath(outputPath); } catch (e) { toast(String(e), 'error'); }
+            };
+            $('#btnPackCopy').onclick = () => { if (setClipboard(outputPath)) toast('copied'); };
+          }
+
           const p = j.result && j.result.progress;
           if (p && p.type === 'pack_progress') {
             const pct = p.bytes_total ? Math.min(100, Math.round((p.bytes_done / p.bytes_total) * 100)) : Math.min(100, Math.round((p.files_done / p.files_total) * 100));
@@ -372,6 +382,19 @@ async function boot() {
     const v = e.target.value;
     if (v) $('#inspectPath').value = v;
   });
+  function setClipboard(text) {
+    try {
+      navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function revealPath(path) {
+    await api('/api/os/reveal', { method: 'POST', body: JSON.stringify({ path }) });
+  }
+
   $('#btnInspect')?.addEventListener('click', async () => {
     $('#inspectStatus').textContent = 'loading…';
     try {
@@ -379,10 +402,24 @@ async function boot() {
       const out = await api('/api/inspect?path=' + encodeURIComponent(p));
       $('#inspectOut').textContent = JSON.stringify(out, null, 2);
       $('#inspectStatus').textContent = 'ok';
+      $('#btnInspectReveal').disabled = !p;
+      $('#btnInspectCopy').disabled = !p;
     } catch (e) {
       $('#inspectStatus').textContent = 'error';
       toastKey('toast.inspectFailed', { err: String(e) }, 'error');
     }
+  });
+
+  $('#btnInspectReveal')?.addEventListener('click', async () => {
+    const p = ($('#inspectPath').value || '').trim();
+    if (!p) return;
+    try { await revealPath(p); } catch (e) { toastKey('toast.inspectFailed', { err: String(e) }, 'error'); }
+  });
+
+  $('#btnInspectCopy')?.addEventListener('click', async () => {
+    const p = ($('#inspectPath').value || '').trim();
+    if (!p) return;
+    if (setClipboard(p)) toast('copied');
   });
 
   // apply

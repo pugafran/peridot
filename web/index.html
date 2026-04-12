@@ -209,6 +209,10 @@
                     <button id="packRunBtn" class="px-4 py-2 rounded-xl border border-purple-800 bg-purple-500/15 hover:bg-purple-500/25 transition text-sm text-purple-200">Create</button>
                   </div>
                   <div class="text-xs text-slate-400 mt-3" id="packRunStatus">idle</div>
+                  <div class="flex items-center gap-2 mt-3">
+                    <button id="btnPackReveal" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-xs" disabled>Reveal</button>
+                    <button id="btnPackCopy" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-xs" disabled>Copy path</button>
+                  </div>
                   <pre id="packJob" class="mt-4 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(no job)</pre>
                 </div>
               </div>
@@ -239,6 +243,8 @@
 
                 <div class="flex items-center gap-2 mt-4">
                   <button id="btnInspect" class="px-4 py-2 rounded-xl border border-sky-800 bg-sky-500/15 hover:bg-sky-500/25 transition text-sm text-sky-200">Inspect</button>
+                  <button id="btnInspectReveal" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-sm" disabled>Reveal</button>
+                  <button id="btnInspectCopy" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-sm" disabled>Copy path</button>
                   <div id="inspectStatus" class="text-xs text-slate-400">idle</div>
                 </div>
 
