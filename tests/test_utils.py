@@ -90,6 +90,8 @@ def test_sanitize_jobs(monkeypatch):
     monkeypatch.setattr(peridot.os, "cpu_count", lambda: 4)
 
     assert peridot.sanitize_jobs(1) == 1
+    assert peridot.sanitize_jobs(0) == peridot.DEFAULT_JOBS
+    assert peridot.sanitize_jobs(-5) == peridot.DEFAULT_JOBS
     assert peridot.sanitize_jobs(999) == 8  # 2 * cpu_count
 
 

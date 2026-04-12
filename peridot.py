@@ -836,10 +836,23 @@ def max_reasonable_jobs(cpu_count: int | None = None) -> int:
 
 
 def sanitize_jobs(value: object) -> int:
+    """Normalize the jobs/concurrency setting.
+
+    Accepts integers; non-integers fall back to DEFAULT_JOBS.
+
+    Special case: values <= 0 mean "auto" (use DEFAULT_JOBS). This makes it
+    easy to disable an explicit override in config files while still keeping a
+    valid, safe concurrency.
+    """
+
     try:
         jobs = int(value)
     except (TypeError, ValueError):
         jobs = DEFAULT_JOBS
+
+    if jobs <= 0:
+        jobs = DEFAULT_JOBS
+
     return max(1, min(max_reasonable_jobs(), jobs))
 
 
