@@ -123,12 +123,20 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
             raise RuntimeError((err or out or "").strip() or f"peridot exited {proc.returncode}")
 
         try:
-            job.result = json.loads(out)
+            final_result = json.loads(out)
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(
                 f"Invalid JSON output from peridot: {exc}. Stdout was: {out[:400]}. Stderr was: {err[:400]}"
             )
 
+        # Preserve any last progress event we captured via PERIDOT_PROGRESS_PATH.
+        if job.result and isinstance(job.result, dict) and "progress" in job.result:
+            try:
+                final_result["progress"] = job.result.get("progress")
+            except Exception:
+                pass
+
+        job.result = final_result
         job.status = "done"
     except Exception as exc:  # noqa: BLE001
         job.status = "error"
@@ -372,7 +380,7 @@ def create_app():
         return _run_peridot_json(args)
 
     def _open_path(target: Path) -> None:
-        # Best-effort cross-platform open/reveal.
+        # Best-effort cross-platform open.
         if os.name == "nt":
             os.startfile(str(target))  # type: ignore[attr-defined]
             return
@@ -380,6 +388,25 @@ def create_app():
             subprocess.Popen(["open", str(target)])
             return
         subprocess.Popen(["xdg-open", str(target)])
+
+    def _reveal_path(target: Path) -> None:
+        # Best-effort cross-platform reveal in file manager.
+        if os.name == "nt":
+            # Explorer can highlight a file with /select.
+            t = target
+            try:
+                if t.exists() and t.is_file():
+                    subprocess.Popen(["explorer.exe", "/select,", str(t)])
+                else:
+                    subprocess.Popen(["explorer.exe", str(t if t.is_dir() else t.parent)])
+            except Exception:
+                os.startfile(str(t if t.is_dir() else t.parent))  # type: ignore[attr-defined]
+            return
+        if sys.platform == "darwin":
+            # Finder: reveal file/dir
+            subprocess.Popen(["open", "-R", str(target)])
+            return
+        subprocess.Popen(["xdg-open", str(target if target.is_dir() else target.parent)])
 
     @app.post("/api/os/open")
     def os_open(payload: dict[str, Any]) -> dict[str, Any]:
@@ -396,8 +423,7 @@ def create_app():
         if not path:
             raise HTTPException(status_code=400, detail="path is required")
         p = Path(path).expanduser()
-        target = p if p.is_dir() else p.parent
-        _open_path(target)
+        _reveal_path(p)
         return {"ok": True}
 
     @app.post("/api/apply/run")
