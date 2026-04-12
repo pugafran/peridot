@@ -43,8 +43,22 @@ _JOBS: dict[str, Job] = {}
 def _run_peridot_json(args: list[str]) -> dict[str, Any]:
     exe = os.environ.get("PERIDOT_EXE") or "peridot"
     cmd = [exe, *args]
+
+    # Windows-first: prevent console windows from flashing when the GUI spawns
+    # subprocesses (best-effort; no-op on non-Windows).
+    creationflags = 0
+    if os.name == "nt":
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
     # Windows-friendly: force a stable encoding for JSON output.
-    p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    p = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        creationflags=creationflags,
+    )
     if p.returncode != 0:
         raise RuntimeError((p.stderr or p.stdout or "").strip() or f"peridot exited {p.returncode}")
 
@@ -77,14 +91,20 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
         if progress_path:
             env["PERIDOT_PROGRESS_PATH"] = progress_path
 
+        creationflags = 0
+        if os.name == "nt":
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",
             env=env,
+            creationflags=creationflags,
         )
 
         stop = False
@@ -202,12 +222,17 @@ def create_app():
         # Determine peridot version from `peridot --version` (stable, lightweight).
         try:
             exe = os.environ.get("PERIDOT_EXE") or "peridot"
+            creationflags = 0
+            if os.name == "nt":
+                creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
             p = subprocess.run(
                 [exe, "--version"],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
+                creationflags=creationflags,
             )
             peridot_version = (p.stdout or "").strip() if p.returncode == 0 else None
         except Exception:
