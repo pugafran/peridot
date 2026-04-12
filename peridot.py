@@ -434,6 +434,7 @@ TRANSLATIONS = {
         "Instalala con '{cmd}'.": "Install it with '{cmd}'.",
         "Tip: activa el entorno virtual con '{cmd}'.": "Tip: activate the virtualenv with '{cmd}'.",
         "Tip: activa el entorno virtual con '. .venv/bin/activate'.": "Tip: activate the virtualenv with '. .venv/bin/activate'.",
+        "Tip: para automatizar (MCP), ejecuta 'apply --dry-run --json' para obtener un apply_token.": "Tip: for automation (MCP), run 'apply --dry-run --json' to obtain an apply_token.",
         "Python actual: {exe} (v{ver}).": "Current Python: {exe} (v{ver}).",
         "Tip: tu idioma del sistema parece espanol. Puedes cambiar la UI/CLI de Peridot con PERIDOT_LANG=es o desde la UI de Settings.": "Tip: your system language looks Spanish. You can switch Peridot UI/CLI with PERIDOT_LANG=es or via the Settings UI.",
         "Actualizacion disponible: {latest} (instalada: {current}). Ejecuta: {cmd}": "Update available: {latest} (installed: {current}). Run: {cmd}",
@@ -3367,6 +3368,8 @@ def cmd_apply(args) -> None:
         )
         render_diff_table(diff_rows)
         console.print(f"[bold cyan]{tr('Dry run: no se ha escrito nada.')}[/bold cyan]")
+        hint = tr("Tip: para automatizar (MCP), ejecuta 'apply --dry-run --json' para obtener un apply_token.")
+        console.print(f"[dim]{hint}[/dim]")
         return
 
     # In JSON mode (used by MCP), require the safety token.
