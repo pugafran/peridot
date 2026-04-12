@@ -457,6 +457,15 @@ async function boot() {
   });
   $('#paletteOverlay').addEventListener('click', closePalette);
   $('#paletteInput').addEventListener('input', renderPalette);
+  $('#paletteInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const first = $('#paletteItems button');
+      if (first) {
+        e.preventDefault();
+        first.click();
+      }
+    }
+  });
 
   // inspect
   async function refreshBundles() {
