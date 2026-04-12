@@ -244,6 +244,23 @@ def test_decode_aesgcm_key_bytes_accepts_hex_with_0x_prefix():
     assert peridot.decode_aesgcm_key_bytes(f"\n 0x{hex_key[:30]}\n{hex_key[30:]} \n") == raw_key
 
 
+def test_load_key_invalid_key_mentions_supported_formats(tmp_path, capsys):
+    key_path = tmp_path / "peridot.key"
+    key_path.write_bytes(b"not a key\n")
+
+    try:
+        peridot.load_key(key_path)
+    except SystemExit as exc:
+        assert exc.code == 1
+    else:
+        raise AssertionError("expected SystemExit")
+
+    captured = capsys.readouterr()
+    combined = (captured.out + captured.err).lower()
+    assert "hex" in combined
+    assert "base64" in combined
+
+
 def test_should_exclude_entry_filters_common_basenames_outside_home(tmp_path):
     assert peridot.should_exclude_entry(tmp_path / ".DS_Store") is True
     assert peridot.should_exclude_entry(tmp_path / ".cache" / "foo.txt") is True

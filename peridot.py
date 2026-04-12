@@ -1360,7 +1360,10 @@ def load_key(key_path: Path, create: bool = False) -> bytes:
                 except OSError:
                     pass
             return decoded
-        die(f"Clave invalida en {key_path}: se esperaban 32 bytes para AES-GCM.")
+        die(
+            f"Clave invalida en {key_path}: se esperaban 32 bytes para AES-GCM. "
+            "Formatos aceptados: 32 bytes raw, 64 hex (opcional 0x) o base64/base64url."
+        )
     if not create:
         die(f"No se encontro la clave en {key_path}")
     AESGCM_impl, _InvalidTag = require_cryptography()
