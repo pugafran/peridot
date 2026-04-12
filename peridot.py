@@ -815,6 +815,11 @@ def normalize_os_name(value: str | None = None) -> str:
     if raw.startswith(("msys", "mingw", "cygwin")):
         return "windows"
 
+    # Older Python versions / downstream builds may return variants like
+    # "linux2" or "linux-gnu".
+    if raw.startswith("linux"):
+        return "linux"
+
     mapping = {
         "darwin": "macos",
         "mac": "macos",
