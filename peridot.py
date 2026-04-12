@@ -117,11 +117,43 @@ except ModuleNotFoundError:
 QUESTIONARY_AVAILABLE = questionary is not None and Choice is not None
 
 
+def read_pyproject_version(pyproject_path: Path) -> str | None:
+    """Read the PEP 621 project.version from pyproject.toml.
+
+    This is a lightweight fallback for source checkouts where the package isn't
+    installed (so importlib.metadata can't resolve the distribution).
+    """
+
+    try:
+        import tomllib  # py3.11+
+    except Exception:
+        return None
+
+    try:
+        raw = pyproject_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    try:
+        data = tomllib.loads(raw)
+    except Exception:
+        return None
+
+    project = data.get("project")
+    if not isinstance(project, dict):
+        return None
+
+    version = project.get("version")
+    if isinstance(version, str) and version.strip():
+        return version.strip()
+    return None
+
+
 try:
     APP_VERSION = metadata.version("peridot-cli")
 except Exception:
     # Fallback for source checkouts / non-installed runs.
-    APP_VERSION = "0.0.0"
+    APP_VERSION = read_pyproject_version(Path(__file__).with_name("pyproject.toml")) or "0.0.0"
 
 PACKAGE_VERSION = 1
 DEFAULT_COMPRESSION_LEVEL = 1
