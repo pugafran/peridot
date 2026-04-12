@@ -218,6 +218,12 @@ def create_app():
             "version": peridot_version,
             "host": host,
             "language": language,
+            "runtime": {
+                "os_name": os.name,
+                "sys_platform": sys.platform,
+                "arch": os.environ.get("PROCESSOR_ARCHITECTURE") or os.environ.get("HOSTTYPE") or "",
+                "cwd": str(Path.cwd()),
+            },
             "presets": sorted(presets, key=lambda p: p.get("key") or ""),
         }
 
@@ -256,12 +262,17 @@ def create_app():
 
         This runs in-process by importing peridot, so we can surface sensitive
         warnings before creating a bundle.
+
+        Accepts optional `excludes` patterns (same semantics as CLI `--exclude`).
         """
 
         preset = str(payload.get("preset") or "").strip()
         paths = payload.get("paths") or []
+        excludes = payload.get("excludes") or []
         if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
             raise HTTPException(status_code=400, detail="paths must be a list of strings")
+        if not isinstance(excludes, list) or not all(isinstance(p, str) for p in excludes):
+            raise HTTPException(status_code=400, detail="excludes must be a list of strings")
 
         try:
             import peridot as peridot_mod  # type: ignore
@@ -278,13 +289,15 @@ def create_app():
         expanded = [_expand_path(p) for p in paths]
 
         entries = peridot_mod.collect_files([Path(p) for p in expanded])
-        entries = peridot_mod.filter_entries(entries, [])
+        entries = peridot_mod.filter_entries(entries, excludes)
         sensitive = peridot_mod.detect_sensitive_entries(entries)
 
         total_bytes = int(sum(getattr(e, "size", 0) for e in entries))
         return {
+            "preset": preset or None,
             "paths": paths,
             "expanded_paths": expanded,
+            "excludes": excludes,
             "files": len(entries),
             "bytes": total_bytes,
             "sensitive": sorted({e.relative_path.replace("\\", "/") for e in sensitive}),

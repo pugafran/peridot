@@ -157,12 +157,28 @@ function renderPackWizard() {
   $('#packOutput').value = state.pack.output;
 
   // presets
+  const runtime = state.meta?.runtime || {};
+  const isWindows = String(runtime.os_name || '').toLowerCase() === 'nt' || String(runtime.sys_platform || '').toLowerCase().startsWith('win');
+
   const presets = (state.meta?.presets || []).map(x => ({
     key: x.key,
     label: x.key,
     desc: x.description,
+    platform: x.platform,
+    shell: x.shell,
     tags: (x.tags || []).slice(0, 4),
-  }));
+  })).sort((a, b) => {
+    // Windows-first: show Windows presets first when running on Windows.
+    const score = (p) => {
+      const plat = String(p.platform || '').toLowerCase();
+      if (isWindows && plat === 'windows') return 2;
+      if (isWindows && plat && plat !== 'windows') return 0;
+      return 1;
+    };
+    const sa = score(a), sb = score(b);
+    if (sa !== sb) return sb - sa;
+    return String(a.key).localeCompare(String(b.key));
+  });
   const grid = $('#presetGrid');
   grid.innerHTML = '';
   for (const p of presets) {
@@ -519,7 +535,7 @@ async function boot() {
     if (v === 3) {
       try {
         toastKey('toast.scan');
-        state.pack.scan = await api('/api/pack/scan', { method: 'POST', body: JSON.stringify({ preset: state.preset, paths: state.pack.paths }) });
+        state.pack.scan = await api('/api/pack/scan', { method: 'POST', body: JSON.stringify({ preset: state.preset, paths: state.pack.paths, excludes: (state.pack.excluded || []) }) });
         // initialize sensitive allow map (default exclude)
         state.pack.sensitiveAllow = {};
         for (const p of (state.pack.scan.sensitive || [])) state.pack.sensitiveAllow[p] = false;
