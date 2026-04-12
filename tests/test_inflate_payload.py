@@ -29,3 +29,20 @@ def test_inflate_payload_explicit_gzip_decompresses():
     raw = b"hello"
     gz = gzip.compress(raw, compresslevel=6, mtime=0)
     assert peridot.inflate_payload(gz, "gzip") == raw
+
+
+def test_inflate_payload_explicit_zstd_missing_dependency_errors_with_install_hint(monkeypatch, capsys):
+    raw = b"hello"
+    monkeypatch.setattr(peridot, "zstd", None)
+
+    try:
+        peridot.inflate_payload(raw, "zstd")
+    except SystemExit as exc:
+        assert exc.code == 1
+    else:
+        raise AssertionError("Expected SystemExit")
+
+    captured = capsys.readouterr()
+    text = (captured.err or "") + "\n" + (captured.out or "")
+    assert "zstandard" in text
+    assert "pip install" in text

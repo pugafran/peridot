@@ -2321,7 +2321,22 @@ def inflate_payload(payload: bytes, compression: str | None) -> bytes:
 
     if compression == "zstd":
         if zstd is None:
-            die("Este paquete usa zstd pero falta la dependencia 'zstandard' en este Python.")
+            pip_hint = install_hint("zstandard")
+            hint = venv_activation_hint()
+            runtime = python_runtime_hint()
+
+            extra_lines: list[str] = []
+            if runtime:
+                extra_lines.append(runtime)
+            if hint:
+                extra_lines.append(hint)
+
+            die(
+                tr("Este paquete usa zstd pero falta la dependencia 'zstandard'.")
+                + " "
+                + trf("Instalala con '{cmd}'.", cmd=pip_hint)
+                + (("\n" + "\n".join(extra_lines)) if extra_lines else "")
+            )
         return zstd.ZstdDecompressor().decompress(payload)
 
     if compression == "none":
