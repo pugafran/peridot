@@ -367,17 +367,43 @@ def create_app():
         # collect_files() and surface missing paths explicitly to the UI.
         existing: list[Path] = []
         missing: list[str] = []
+        skipped: list[str] = []
         for p in expanded:
             pp = Path(p)
             try:
-                if pp.expanduser().exists():
-                    existing.append(pp)
-                else:
+                ex = pp.expanduser()
+                if not ex.exists():
                     missing.append(p)
+                    continue
+                # Keep GUI scan stable: skip symlinks (Peridot will skip them
+                # anyway, but may print a warning).
+                if ex.is_symlink():
+                    skipped.append(p)
+                    continue
+                existing.append(pp)
             except Exception:
                 missing.append(p)
 
-        entries = peridot_mod.collect_files(existing)
+        # Avoid noisy console output from peridot (e.g. warnings about skipped
+        # paths) when scanning via the GUI.
+        try:
+            from contextlib import contextmanager
+
+            @contextmanager
+            def _silence_console():
+                original = getattr(peridot_mod, "console", None)
+                try:
+                    peridot_mod.console = type("_NullConsole", (), {"print": lambda *_a, **_k: None})()  # type: ignore[attr-defined]
+                    yield
+                finally:
+                    if original is not None:
+                        peridot_mod.console = original  # type: ignore[attr-defined]
+
+            with _silence_console():
+                entries = peridot_mod.collect_files(existing)
+        except Exception:
+            entries = peridot_mod.collect_files(existing)
+
         entries = peridot_mod.filter_entries(entries, excludes)
         sensitive = peridot_mod.detect_sensitive_entries(entries)
 
@@ -387,6 +413,7 @@ def create_app():
             "paths": paths,
             "expanded_paths": expanded,
             "missing_paths": missing,
+            "skipped_paths": skipped,
             "excludes": excludes,
             "files": len(entries),
             "bytes": total_bytes,

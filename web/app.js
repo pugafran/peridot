@@ -266,30 +266,43 @@ function renderPackWizard() {
       return `${s} ${u[i]}`;
     };
     const missingPaths = (state.pack.scan.missing_paths || []);
+    const skippedPaths = (state.pack.scan.skipped_paths || []);
     const missing = missingPaths.length;
-    ssum.textContent = `Scan: ${files} files · ${fmtBytes(bytes)} · ${sensitive.length} sensitive` + (missing ? ` · ${missing} missing path(s)` : '');
+    const skipped = skippedPaths.length;
+    ssum.textContent = `Scan: ${files} files · ${fmtBytes(bytes)} · ${sensitive.length} sensitive`
+      + (missing ? ` · ${missing} missing` : '')
+      + (skipped ? ` · ${skipped} skipped` : '');
 
-    if (missing) {
+    if (missing || skipped) {
       const wrap = document.createElement('div');
       wrap.className = 'mt-3 rounded-xl border border-slate-800 bg-slate-950/30 p-3';
       wrap.innerHTML = `
-        <div class="text-xs text-slate-300 font-medium">Missing paths</div>
-        <div class="text-[11px] text-slate-500 mt-1">These preset/default paths were not found on this machine (safe to ignore).</div>
+        <div class="text-xs text-slate-300 font-medium">Paths not scanned</div>
+        <div class="text-[11px] text-slate-500 mt-1">Missing paths are not present on this machine. Skipped paths are typically symlinks (safe to ignore).</div>
         <div class="mt-2 flex flex-col gap-1"></div>
       `;
       const list = wrap.querySelector('div.mt-2');
-      for (const mp of missingPaths.slice(0, 24)) {
-        const ln = document.createElement('div');
-        ln.className = 'text-xs text-slate-300 font-mono truncate';
-        ln.textContent = mp;
-        list.appendChild(ln);
-      }
-      if (missingPaths.length > 24) {
-        const ln = document.createElement('div');
-        ln.className = 'text-xs text-slate-500';
-        ln.textContent = `…and ${missingPaths.length - 24} more`;
-        list.appendChild(ln);
-      }
+      const add = (label, items) => {
+        if (!items.length) return;
+        const h = document.createElement('div');
+        h.className = 'text-[11px] text-slate-500 mt-2';
+        h.textContent = label;
+        list.appendChild(h);
+        for (const mp of items.slice(0, 18)) {
+          const ln = document.createElement('div');
+          ln.className = 'text-xs text-slate-300 font-mono truncate';
+          ln.textContent = mp;
+          list.appendChild(ln);
+        }
+        if (items.length > 18) {
+          const ln = document.createElement('div');
+          ln.className = 'text-xs text-slate-500';
+          ln.textContent = `…and ${items.length - 18} more`;
+          list.appendChild(ln);
+        }
+      };
+      add('Missing', missingPaths);
+      add('Skipped', skippedPaths);
       sbox.appendChild(wrap);
     }
 
