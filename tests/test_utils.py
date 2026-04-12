@@ -47,6 +47,16 @@ def test_install_hint_quotes_targets_with_spaces(monkeypatch):
     assert "'/tmp/a folder/peridot'" in cmd
 
 
+def test_install_hint_does_not_quote_pip_option_targets(monkeypatch):
+    # Keep the test stable on non-Windows runners.
+    monkeypatch.setattr(peridot, "normalize_os_name", lambda: "linux")
+
+    cmd = peridot.install_hint("-U peridot-cli")
+    # It must stay split as two args, not a single quoted string.
+    assert "pip install -U peridot-cli" in cmd
+    assert "'-U peridot-cli'" not in cmd
+
+
 def test_die_falls_back_to_plain_stderr_without_rich(monkeypatch, capsys):
     monkeypatch.setattr(peridot, "RICH_AVAILABLE", False)
     monkeypatch.setattr(peridot, "CURRENT_LANGUAGE", "en")

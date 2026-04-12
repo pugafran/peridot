@@ -613,14 +613,23 @@ def install_hint(target: str) -> str:
 
         The install *target* can also contain spaces (e.g. a local path).
         Quote it so the suggested command remains copy/paste-friendly.
+
+        If *target* starts with a dash, we treat it as a pip option string
+        (e.g. "-U peridot-cli" or "-r requirements.txt") and **must not**
+        quote it as a single argument.
     """
 
-    target_str = str(target)
-    if any(ch.isspace() for ch in target_str):
-        if normalize_os_name() == "windows":
-            target_str = f'"{target_str}"'
-        else:
-            target_str = shlex.quote(target_str)
+    raw_target = str(target)
+
+    if raw_target.lstrip().startswith("-"):
+        target_str = raw_target.strip()
+    else:
+        target_str = raw_target
+        if any(ch.isspace() for ch in target_str):
+            if normalize_os_name() == "windows":
+                target_str = f'"{target_str}"'
+            else:
+                target_str = shlex.quote(target_str)
 
     venv_dir = Path(".venv")
     candidates = [
