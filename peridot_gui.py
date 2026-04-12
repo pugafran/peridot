@@ -414,7 +414,7 @@ def create_app():
                 if ex.is_symlink():
                     skipped.append(p)
                     continue
-                existing.append(pp)
+                existing.append(ex)
             except Exception:
                 missing.append(p)
 
@@ -680,13 +680,13 @@ def create_app():
 
         async def gen():
             # Initial comment to get the stream started reliably on some clients.
-            yield ": ok\n\n"
+            yield b": ok\n\n"
             # Hint to the browser how quickly to retry.
-            yield "retry: 1000\n\n"
+            yield b"retry: 1000\n\n"
             while True:
                 j = _JOBS.get(job_id)
                 if not j:
-                    yield "event: done\ndata: {}\n\n"
+                    yield b"event: done\ndata: {}\n\n"
                     return
 
                 payload = {
@@ -701,7 +701,7 @@ def create_app():
                 }
 
                 # EventSource default handler uses the implicit "message" event.
-                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                yield (f"data: {json.dumps(payload, ensure_ascii=False)}\n\n").encode("utf-8")
                 if j.status in {"done", "error"}:
                     return
 
