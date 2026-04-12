@@ -48,14 +48,26 @@ def _peridot_cmd_prefix() -> list[str]:
     - PERIDOT_EXE="C:\\Path With Spaces\\peridot.exe"
     - PERIDOT_EXE="python -m peridot" (useful for dev/tests)
 
+    Windows-first behavior:
+    - If PERIDOT_EXE is not set and `peridot` is not on PATH, we fall back to
+      invoking the module via the current interpreter: `python -m peridot`.
+
     We avoid shell=True for safety and Windows consistency.
     """
 
+    import importlib.util
     import shlex
+    import shutil
 
-    raw = (os.environ.get("PERIDOT_EXE") or "peridot").strip()
-    if not raw:
-        raw = "peridot"
+    raw_env = os.environ.get("PERIDOT_EXE")
+    raw = (raw_env or "peridot").strip() or "peridot"
+
+    # If the user didn't override PERIDOT_EXE and there is no `peridot`
+    # executable on PATH (common on fresh Windows installs / editable dev
+    # checkouts), use `python -m peridot`.
+    if raw_env is None and raw == "peridot" and shutil.which("peridot") is None:
+        if importlib.util.find_spec("peridot") is not None:
+            return [sys.executable, "-m", "peridot"]
 
     # shlex on Windows uses different quoting rules; best-effort.
     try:
