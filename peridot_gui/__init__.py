@@ -610,6 +610,19 @@ def create_app():
         t.start()
         return {"job_id": jid}
 
+    def _slug(s: str) -> str:
+        s = (s or "").strip().lower()
+        out = []
+        for ch in s:
+            if ch.isalnum():
+                out.append(ch)
+            elif ch in ("-", "_", "."):
+                out.append(ch)
+            elif ch.isspace():
+                out.append("-")
+        slug = "".join(out).strip("-._")
+        return slug or "bundle"
+
     @app.post("/api/pack")
     def pack(payload: dict[str, Any]) -> dict[str, Any]:
         preset = str(payload.get("preset") or "").strip()
@@ -627,8 +640,14 @@ def create_app():
         # If preset is provided, pass it through and let peridot resolve defaults.
         # Safety: if the UI sends neither paths nor preset, Peridot CLI will
         # attempt interactive prompts (which will crash in GUI subprocesses).
+        # Windows note: some environments still report stdin as a tty; to avoid
+        # CLI falling into interactive prompts, we always pass --output and a
+        # non-empty --description.
         out = payload.get("output")
-        args = ["pack", name, "--json", "--yes"]
+        default_out = f"{_slug(name)}.peridot"
+        output_path = _expand_path(str(out)) if out else _expand_path(default_out)
+
+        args = ["pack", name, "--json", "--yes", "--output", output_path, "--description", "peridot gui"]
 
         # Windows-first: expand user/env vars early so the CLI receives
         # absolute paths (tilde isn't native on Windows).
