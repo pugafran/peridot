@@ -180,7 +180,7 @@ def create_app():
     def index() -> str:
         return (web_root / "index.html").read_text(encoding="utf-8")
 
-    @app.get("/web/{asset}")
+    @app.get("/web/{asset:path}")
     def web_asset(asset: str):
         # Windows-friendly path guard:
         # - Avoid naive string prefix checks (case/sep issues on Windows)
@@ -560,6 +560,8 @@ def create_app():
         def gen():
             # Initial comment to get the stream started reliably on some clients.
             yield ": ok\n\n"
+            # Hint to the browser how quickly to retry.
+            yield "retry: 1000\n\n"
             while True:
                 try:
                     j = _JOBS.get(job_id)
@@ -578,7 +580,8 @@ def create_app():
                         "error": j.error,
                     }
 
-                    yield f"data: {json.dumps(payload)}\n\n"
+                    # EventSource default handler uses the implicit "message" event.
+                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
                     if j.status in {"done", "error"}:
                         return
 
