@@ -300,13 +300,30 @@ def _tool_run_cli(argv: list[str]) -> JSON:
     code, out, err = _capture_peridot_main(argv)
     payload: JSON = {"ok": code == 0, "exitCode": code, "stdout": out, "stderr": err, "argv": argv}
 
-    # Best-effort: if stdout is pure JSON, parse it for structured consumption.
+    # Best-effort: if stdout is JSON, parse it for structured consumption.
+    #
+    # In ideal conditions, Peridot's `--json` emits only JSON to stdout.
+    # However, some environments may prepend informational lines (e.g. wrappers,
+    # warnings). We try the full stdout first, then fall back to parsing the last
+    # line that looks like JSON.
     out_stripped = out.strip()
-    if out_stripped.startswith("{") or out_stripped.startswith("["):
+    candidates: list[str] = []
+    if out_stripped:
+        candidates.append(out_stripped)
+        lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
+        for ln in reversed(lines):
+            if ln.startswith("{") or ln.startswith("["):
+                candidates.append(ln)
+                break
+
+    for cand in candidates:
+        if not (cand.startswith("{") or cand.startswith("[")):
+            continue
         try:
-            payload["data"] = json.loads(out_stripped)
+            payload["data"] = json.loads(cand)
+            break
         except Exception:
-            pass
+            continue
 
     return payload
 
