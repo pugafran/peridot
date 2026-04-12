@@ -661,8 +661,6 @@ def create_app():
             args.extend(["--exclude", pat])
         if preset:
             args.extend(["--preset", preset])
-        if out:
-            args.extend(["--output", _expand_path(str(out))])
 
         jid = str(uuid.uuid4())
         job = Job(id=jid, kind="pack", status="queued", created_ts=time.time())

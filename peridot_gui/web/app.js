@@ -522,9 +522,28 @@ async function boot() {
 
     // Ensure we always have a preset selected so Pack never triggers
     // interactive CLI prompts (which will crash in GUI subprocess mode).
+    // Windows-first: pick a Windows preset when running on Windows.
     if (!state.preset) {
-      const first = (state.meta.presets && state.meta.presets[0] && state.meta.presets[0].key) ? state.meta.presets[0].key : '';
-      if (first) state.preset = first;
+      const runtime = state.meta?.runtime || {};
+      const isWindows = String(runtime.os_name || '').toLowerCase() === 'nt' || String(runtime.sys_platform || '').toLowerCase().startsWith('win');
+      const presets = Array.isArray(state.meta.presets) ? state.meta.presets : [];
+
+      const score = (p) => {
+        const plat = String(p.platform || '').toLowerCase();
+        if (isWindows && plat === 'windows') return 2;
+        if (isWindows && plat && plat !== 'windows') return 0;
+        return 1;
+      };
+
+      const best = presets
+        .slice()
+        .sort((a, b) => {
+          const sa = score(a), sb = score(b);
+          if (sa !== sb) return sb - sa;
+          return String(a.key || '').localeCompare(String(b.key || ''));
+        })[0];
+
+      if (best && best.key) state.preset = best.key;
     }
 
     // apply translations
