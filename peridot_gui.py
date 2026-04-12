@@ -90,17 +90,33 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
         stop = False
 
         def progress_reader():
+            """Read the latest JSONL progress event.
+
+            Keep it lightweight (tail-read) so it behaves well on Windows too.
+            """
+
             if not progress_path:
                 return
-            last_size = 0
+
             while not stop:
                 try:
                     p = Path(progress_path)
                     if not p.exists():
                         time.sleep(0.2)
                         continue
-                    data = p.read_text(encoding="utf-8", errors="replace")
-                    # Only process the last line (cheap).
+
+                    # Tail-read ~8KiB and parse the last non-empty line.
+                    try:
+                        with p.open("rb") as f:
+                            f.seek(0, os.SEEK_END)
+                            size = f.tell()
+                            f.seek(max(0, size - 8192), os.SEEK_SET)
+                            chunk = f.read()
+                        data = chunk.decode("utf-8", errors="replace")
+                    except Exception:
+                        # Fallback for unusual filesystems.
+                        data = p.read_text(encoding="utf-8", errors="replace")
+
                     lines = [ln for ln in data.splitlines() if ln.strip()]
                     if lines:
                         try:
@@ -536,28 +552,32 @@ def create_app():
             # Initial comment to get the stream started reliably on some clients.
             yield ": ok\n\n"
             while True:
-                j = _JOBS.get(job_id)
-                if not j:
-                    yield "event: done\ndata: {}\n\n"
+                try:
+                    j = _JOBS.get(job_id)
+                    if not j:
+                        yield "event: done\ndata: {}\n\n"
+                        return
+
+                    payload = {
+                        "id": j.id,
+                        "kind": j.kind,
+                        "status": j.status,
+                        "created_ts": j.created_ts,
+                        "started_ts": j.started_ts,
+                        "finished_ts": j.finished_ts,
+                        "result": j.result,
+                        "error": j.error,
+                    }
+
+                    yield f"data: {json.dumps(payload)}\n\n"
+                    if j.status in {"done", "error"}:
+                        return
+
+                    # basic heartbeat
+                    time.sleep(0.8)
+                except GeneratorExit:
+                    # Client disconnected.
                     return
-
-                payload = {
-                    "id": j.id,
-                    "kind": j.kind,
-                    "status": j.status,
-                    "created_ts": j.created_ts,
-                    "started_ts": j.started_ts,
-                    "finished_ts": j.finished_ts,
-                    "result": j.result,
-                    "error": j.error,
-                }
-
-                yield f"data: {json.dumps(payload)}\n\n"
-                if j.status in {"done", "error"}:
-                    return
-
-                # basic heartbeat
-                time.sleep(0.8)
 
         headers = {
             # Make proxies/servers less likely to buffer SSE.
