@@ -278,7 +278,9 @@ def create_app():
                 raise HTTPException(status_code=500, detail=str(exc))
 
     def _expand_path(p: str) -> str:
-        return str(Path(os.path.expandvars(os.path.expanduser(p))).resolve())
+        # Expand ~ and environment variables, then resolve to an absolute path.
+        # Use strict=False so non-existing paths still resolve sensibly.
+        return str(Path(os.path.expandvars(os.path.expanduser(p))).resolve(strict=False))
 
     @app.post("/api/pack/scan")
     def pack_scan(payload: dict[str, Any]) -> dict[str, Any]:
@@ -386,17 +388,21 @@ def create_app():
     def inspect_bundle(path: str) -> Any:
         # Prefer CLI JSON.
         try:
-            return _run_peridot_json(["inspect", path, "--json"])
+            p = _expand_path(path)
+            return _run_peridot_json(["inspect", p, "--json"])
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc))
 
     @app.post("/api/apply/plan")
     def apply_plan(payload: dict[str, Any]) -> Any:
-        package = str(payload.get("package") or "")
-        target = str(payload.get("target") or "")
+        package_raw = str(payload.get("package") or "")
+        target_raw = str(payload.get("target") or "")
         ignore_platform = bool(payload.get("ignore_platform") or False)
         transactional = bool(payload.get("transactional") if payload.get("transactional") is not None else True)
         verify = bool(payload.get("verify") if payload.get("verify") is not None else True)
+
+        package = _expand_path(package_raw) if package_raw else ""
+        target = _expand_path(target_raw) if target_raw else ""
 
         if not package:
             raise HTTPException(status_code=400, detail="package is required")
@@ -445,7 +451,7 @@ def create_app():
         path = str(payload.get("path") or "").strip()
         if not path:
             raise HTTPException(status_code=400, detail="path is required")
-        p = Path(path).expanduser()
+        p = Path(_expand_path(path))
         _open_path(p)
         return {"ok": True}
 
@@ -454,18 +460,21 @@ def create_app():
         path = str(payload.get("path") or "").strip()
         if not path:
             raise HTTPException(status_code=400, detail="path is required")
-        p = Path(path).expanduser()
+        p = Path(_expand_path(path))
         _reveal_path(p)
         return {"ok": True}
 
     @app.post("/api/apply/run")
     def apply_run(payload: dict[str, Any]) -> dict[str, Any]:
-        package = str(payload.get("package") or "")
-        target = str(payload.get("target") or "")
+        package_raw = str(payload.get("package") or "")
+        target_raw = str(payload.get("target") or "")
         apply_token = str(payload.get("apply_token") or "")
         ignore_platform = bool(payload.get("ignore_platform") or False)
         transactional = bool(payload.get("transactional") if payload.get("transactional") is not None else True)
         verify = bool(payload.get("verify") if payload.get("verify") is not None else True)
+
+        package = _expand_path(package_raw) if package_raw else ""
+        target = _expand_path(target_raw) if target_raw else ""
 
         if not package:
             raise HTTPException(status_code=400, detail="package is required")
