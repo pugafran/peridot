@@ -75,6 +75,11 @@ def _run_peridot_json(args: list[str]) -> dict[str, Any]:
     if os.name == "nt":
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
+    # Windows-friendly: enforce UTF-8 for any Python-based Peridot CLI.
+    env = dict(os.environ)
+    env.setdefault("PYTHONUTF8", "1")
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+
     # Windows-friendly: force a stable encoding for JSON output.
     p = subprocess.run(
         cmd,
@@ -82,6 +87,7 @@ def _run_peridot_json(args: list[str]) -> dict[str, Any]:
         text=True,
         encoding="utf-8",
         errors="replace",
+        env=env,
         creationflags=creationflags,
     )
     if p.returncode != 0:
@@ -112,6 +118,9 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
 
     try:
         env = dict(os.environ)
+        # Ensure consistent encoding when the CLI is `python -m peridot`.
+        env.setdefault("PYTHONUTF8", "1")
+        env.setdefault("PYTHONIOENCODING", "utf-8")
         if progress_path:
             env["PERIDOT_PROGRESS_PATH"] = progress_path
 
@@ -249,12 +258,16 @@ def create_app():
             if os.name == "nt":
                 creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
+            env = dict(os.environ)
+            env.setdefault("PYTHONUTF8", "1")
+            env.setdefault("PYTHONIOENCODING", "utf-8")
             p = subprocess.run(
                 [*_peridot_cmd_prefix(), "--version"],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
+                env=env,
                 creationflags=creationflags,
             )
             peridot_version = (p.stdout or "").strip() if p.returncode == 0 else None
@@ -590,14 +603,19 @@ def create_app():
         # If preset is provided, pass it through and let peridot resolve defaults.
         out = payload.get("output")
         args = ["pack", name, "--json", "--yes"]
-        if paths:
-            args.extend(paths)
+
+        # Windows-first: expand user/env vars early so the CLI receives
+        # absolute paths (tilde isn't native on Windows).
+        expanded_paths = [_expand_path(p) for p in paths] if paths else []
+        if expanded_paths:
+            args.extend(expanded_paths)
+
         for pat in excludes:
             args.extend(["--exclude", pat])
         if preset:
             args.extend(["--preset", preset])
         if out:
-            args.extend(["--output", str(out)])
+            args.extend(["--output", _expand_path(str(out))])
 
         jid = str(uuid.uuid4())
         job = Job(id=jid, kind="pack", status="queued", created_ts=time.time())
