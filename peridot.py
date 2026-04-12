@@ -292,7 +292,7 @@ TRANSLATIONS = {
         "No se encontro ningun archivo exportable.": "No exportable files were found.",
         "No quedan archivos tras aplicar exclusiones y filtros de seguridad.": "No files remain after applying excludes and security filters.",
         "falta la dependencia 'questionary' en este Python.": "the 'questionary' dependency is missing in this Python.",
-        "Usa el binario instalado con './install.sh' o ejecuta 'python3 -m pip install -r requirements.txt'.": "Use the binary installed with './install.sh' or run 'python3 -m pip install -r requirements.txt'.",
+        "Usa el binario instalado con './install.sh' o ejecuta '{cmd}'.": "Use the binary installed with './install.sh' or run '{cmd}'.", 
         "Selecciona grupos": "Select groups",
         "Selecciona rutas": "Select paths",
         "Selecciona rutas para este bundle": "Select paths for this bundle",
@@ -1715,12 +1715,13 @@ def explain_checkbox_unavailable() -> None:
         console.print(f"[dim]{tr('Ejecuta Peridot directamente en una terminal interactiva.')}[/dim]")
     elif reason == "missing_questionary":
         missing_questionary_text = "falta la dependencia 'questionary' en este Python."
-        install_hint_text = "Usa el binario instalado con './install.sh' o ejecuta 'python3 -m pip install -r requirements.txt'."
+        install_cmd = install_hint("-r requirements.txt")
+        install_hint_text = trf("Usa el binario instalado con './install.sh' o ejecuta '{cmd}'.", cmd=install_cmd)
         console.print(
             f"[yellow]{tr('Checkbox UI no disponible:')}[/yellow] {tr(missing_questionary_text)}"
         )
         console.print(
-            f"[dim]{tr(install_hint_text)}[/dim]"
+            f"[dim]{install_hint_text}[/dim]"
         )
 
 
