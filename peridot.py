@@ -4198,7 +4198,7 @@ def cmd_self_update(args) -> None:
     if not getattr(args, "yes", False) and sys.stdin.isatty():
         prompt = tr("Actualizar peridot-cli a la ultima version? [y/N] ")
         ans = input(prompt).strip().lower()
-        if ans not in {"y", "yes", "s", "si"}:
+        if ans not in {"y", "yes", "s", "si", "sí"}:
             return
 
     cmd = [sys.executable, "-m", "pip", "install", "-U", "peridot-cli"]
