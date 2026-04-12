@@ -241,9 +241,21 @@ def test_venv_activation_hint_prefers_windows_activate_script(tmp_path, monkeypa
     assert "Scripts\\activate" in hint
 
 
-def test_venv_activation_hint_falls_back_to_posix_activate(tmp_path, monkeypatch):
+def test_venv_activation_hint_returns_none_when_activate_script_missing(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".venv").mkdir()
+
+    monkeypatch.setattr(peridot.sys, "prefix", "X")
+    monkeypatch.setattr(peridot.sys, "base_prefix", "X")
+    monkeypatch.setattr(peridot, "CURRENT_LANGUAGE", "en")
+
+    assert peridot.venv_activation_hint() is None
+
+
+def test_venv_activation_hint_falls_back_to_posix_activate(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".venv" / "bin").mkdir(parents=True)
+    (tmp_path / ".venv" / "bin" / "activate").write_text("#!/bin/sh\n")
 
     monkeypatch.setattr(peridot.sys, "prefix", "X")
     monkeypatch.setattr(peridot.sys, "base_prefix", "X")
@@ -261,6 +273,7 @@ def test_venv_activation_hint_finds_virtualenv_next_to_module_file(tmp_path, mon
     module_path.write_text("# dummy\n")
 
     (repo_root / ".venv" / "bin").mkdir(parents=True)
+    (repo_root / ".venv" / "bin" / "activate").write_text("#!/bin/sh\n")
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(peridot, "__file__", str(module_path))

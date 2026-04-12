@@ -684,7 +684,10 @@ def install_hint(target: str) -> str:
 
 
 def venv_activation_hint() -> str | None:
-    """Suggest activating the repo virtualenv when it exists but isn't active."""
+    """Suggest activating the repo virtualenv when it exists but isn't active.
+
+    We only emit a hint when an activation script is actually present.
+    """
 
     try:
         venv_dir = detect_repo_venv_dir()
@@ -692,20 +695,22 @@ def venv_activation_hint() -> str | None:
         if venv_dir is None or is_venv_active:
             return None
 
+        win_activate = venv_dir / "Scripts" / "activate"
+        posix_activate = venv_dir / "bin" / "activate"
+
+        if not win_activate.exists() and not posix_activate.exists():
+            return None
+
         # Prefer a hint that matches the virtualenv layout for the platform.
         # Keep relative, familiar commands when the venv is in the CWD.
-        if venv_dir == Path(".venv"):
-            win_activate = venv_dir / "Scripts" / "activate"
-            if win_activate.exists():
+        if win_activate.exists():
+            if venv_dir == Path(".venv"):
                 cmd = ".venv\\Scripts\\activate"
             else:
-                cmd = ". .venv/bin/activate"
-        else:
-            win_activate = venv_dir / "Scripts" / "activate"
-            posix_activate = venv_dir / "bin" / "activate"
-
-            if win_activate.exists():
                 cmd = str(win_activate)
+        else:
+            if venv_dir == Path(".venv"):
+                cmd = ". .venv/bin/activate"
             else:
                 cmd = f". {shlex.quote(str(posix_activate))}"
 
