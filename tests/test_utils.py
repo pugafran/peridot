@@ -152,6 +152,25 @@ def test_install_hint_prefers_repo_virtualenv_python(tmp_path, monkeypatch):
     hint = peridot.install_hint(".")
     assert ".venv/bin/python" in hint.replace("\\", "/")
 
+
+def test_install_hint_finds_virtualenv_next_to_module_file(tmp_path, monkeypatch):
+    # Simulate running Peridot from a source checkout but with a different CWD.
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    module_path = repo_root / "peridot.py"
+    module_path.write_text("# dummy\n")
+
+    venv_python = repo_root / ".venv" / "bin" / "python"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.write_text("#!/bin/sh\n")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(peridot, "__file__", str(module_path))
+
+    hint = peridot.install_hint(".")
+    normalized = hint.replace("\\", "/")
+    assert "/repo/.venv/bin/python" in normalized
+
 #
 
 
@@ -169,12 +188,22 @@ def test_install_hint_handles_windows_virtualenv_layout(tmp_path, monkeypatch):
 def test_install_hint_falls_back_to_sys_executable(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
+    # Avoid picking up the real repo .venv when the module under test lives in a
+    # source checkout.
+    fake_module = tmp_path / "peridot.py"
+    fake_module.write_text("# dummy\n")
+    monkeypatch.setattr(peridot, "__file__", str(fake_module))
+
     hint = peridot.install_hint(".")
     assert peridot.sys.executable in hint
 
 
 def test_install_hint_quotes_sys_executable_when_it_contains_spaces(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+
+    fake_module = tmp_path / "peridot.py"
+    fake_module.write_text("# dummy\n")
+    monkeypatch.setattr(peridot, "__file__", str(fake_module))
 
     monkeypatch.setattr(peridot.sys, "executable", "/opt/My Python/bin/python")
     monkeypatch.setattr(peridot.platform, "system", lambda: "Linux")
@@ -184,6 +213,10 @@ def test_install_hint_quotes_sys_executable_when_it_contains_spaces(tmp_path, mo
 
 def test_install_hint_quotes_windows_sys_executable_with_double_quotes(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+
+    fake_module = tmp_path / "peridot.py"
+    fake_module.write_text("# dummy\n")
+    monkeypatch.setattr(peridot, "__file__", str(fake_module))
 
     monkeypatch.setattr(peridot.sys, "executable", "C:/Program Files/Python/python.exe")
     monkeypatch.setattr(peridot.platform, "system", lambda: "Windows")
@@ -219,6 +252,26 @@ def test_venv_activation_hint_falls_back_to_posix_activate(tmp_path, monkeypatch
     hint = peridot.venv_activation_hint()
     assert hint is not None
     assert ".venv/bin/activate" in hint
+
+
+def test_venv_activation_hint_finds_virtualenv_next_to_module_file(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    module_path = repo_root / "peridot.py"
+    module_path.write_text("# dummy\n")
+
+    (repo_root / ".venv" / "bin").mkdir(parents=True)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(peridot, "__file__", str(module_path))
+
+    monkeypatch.setattr(peridot.sys, "prefix", "X")
+    monkeypatch.setattr(peridot.sys, "base_prefix", "X")
+    monkeypatch.setattr(peridot, "CURRENT_LANGUAGE", "en")
+
+    hint = peridot.venv_activation_hint()
+    assert hint is not None
+    assert "/repo/.venv/bin/activate" in hint.replace("\\", "/")
 
 
 def test_decode_aesgcm_key_bytes_accepts_unpadded_base64url():

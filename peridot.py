@@ -600,6 +600,33 @@ def trf(text: str, **kwargs) -> str:
     return tr(text).format(**kwargs)
 
 
+def detect_repo_venv_dir() -> Path | None:
+    """Return the most likely .venv directory for hint generation.
+
+    Peridot is often run from a source checkout, but not necessarily with the
+    repo root as the current working directory (e.g. invoked via an absolute
+    path). In that case, looking only at Path('.venv') would miss the repo
+    virtualenv.
+
+    We check (in order):
+    - ./.venv relative to the current working directory
+    - .venv next to this file (repo checkout)
+    """
+
+    try:
+        cwd_venv = Path(".venv")
+        if cwd_venv.exists():
+            return cwd_venv
+
+        file_venv = Path(__file__).resolve().parent / ".venv"
+        if file_venv.exists():
+            return file_venv
+    except Exception:
+        return None
+
+    return None
+
+
 def install_hint(target: str) -> str:
     """Return a copy/paste-friendly pip install command.
 
@@ -631,15 +658,16 @@ def install_hint(target: str) -> str:
             else:
                 target_str = shlex.quote(target_str)
 
-    venv_dir = Path(".venv")
-    candidates = [
-        venv_dir / "bin" / "python",
-        venv_dir / "Scripts" / "python.exe",
-        venv_dir / "Scripts" / "python",
-    ]
-    for venv_python in candidates:
-        if venv_python.exists():
-            return f"{venv_python} -m pip install {target_str}"
+    venv_dir = detect_repo_venv_dir()
+    if venv_dir is not None:
+        candidates = [
+            venv_dir / "bin" / "python",
+            venv_dir / "Scripts" / "python.exe",
+            venv_dir / "Scripts" / "python",
+        ]
+        for venv_python in candidates:
+            if venv_python.exists():
+                return f"{venv_python} -m pip install {target_str}"
 
     # Fall back to the current interpreter so the suggestion matches the
     # environment Peridot is running in.
@@ -659,16 +687,28 @@ def venv_activation_hint() -> str | None:
     """Suggest activating the repo virtualenv when it exists but isn't active."""
 
     try:
-        venv_dir = Path(".venv")
+        venv_dir = detect_repo_venv_dir()
         is_venv_active = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
-        if not venv_dir.exists() or is_venv_active:
+        if venv_dir is None or is_venv_active:
             return None
 
         # Prefer a hint that matches the virtualenv layout for the platform.
-        if (venv_dir / "Scripts" / "activate").exists():
-            cmd = ".venv\\Scripts\\activate"
+        # Keep relative, familiar commands when the venv is in the CWD.
+        if venv_dir == Path(".venv"):
+            win_activate = venv_dir / "Scripts" / "activate"
+            if win_activate.exists():
+                cmd = ".venv\\Scripts\\activate"
+            else:
+                cmd = ". .venv/bin/activate"
         else:
-            cmd = ". .venv/bin/activate"
+            win_activate = venv_dir / "Scripts" / "activate"
+            posix_activate = venv_dir / "bin" / "activate"
+
+            if win_activate.exists():
+                cmd = str(win_activate)
+            else:
+                cmd = f". {shlex.quote(str(posix_activate))}"
+
         return trf("Tip: activa el entorno virtual con '{cmd}'.", cmd=cmd)
     except Exception:
         return None
