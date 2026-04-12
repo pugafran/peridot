@@ -3743,8 +3743,23 @@ def cmd_doctor(args) -> None:
             status = "high"
             detail = f"{pressure * 100:.0f}% (critical)"
         rows.append(("memory_pressure", status, detail))
-    path_ok = any(str(Path.home() / ".local" / "bin") == part for part in os.environ.get("PATH", "").split(os.pathsep))
-    rows.append(("path", "ok" if path_ok else "warn", "~/.local/bin in PATH" if path_ok else "~/.local/bin not in PATH"))
+    # PATH sanity check (Windows-first): the old check assumed a POSIX-style
+    # ~/.local/bin install. On Windows, Peridot is typically installed via
+    # `pipx`, `pip install --user`, or as a module (`python -m peridot`).
+    import shutil
+
+    if os.name == "nt":
+        exe_ok = shutil.which("peridot") is not None
+        rows.append(
+            (
+                "path",
+                "ok" if exe_ok else "warn",
+                "peridot.exe found on PATH" if exe_ok else "peridot.exe not on PATH (try: pipx install peridot-cli, or use: python -m peridot)",
+            )
+        )
+    else:
+        path_ok = any(str(Path.home() / ".local" / "bin") == part for part in os.environ.get("PATH", "").split(os.pathsep))
+        rows.append(("path", "ok" if path_ok else "warn", "~/.local/bin in PATH" if path_ok else "~/.local/bin not in PATH"))
     checkbox_reason = checkbox_unavailable_reason()
     if checkbox_reason is None:
         rows.append(("checkbox_ui", "ok", "questionary + tty available"))
