@@ -891,7 +891,13 @@ def sanitize_update_check_enabled(value: object) -> bool:
 
 def sanitize_update_check_interval_hours(value: object) -> int:
     try:
-        hours = int(value)
+        # Accept both integer and float-ish values (e.g. "24.0") coming from
+        # JSON or env-driven overrides.
+        if isinstance(value, float):
+            hours = int(value)
+        else:
+            raw = str(value).strip()
+            hours = int(float(raw)) if (raw and any(ch in raw for ch in ".eE")) else int(raw)
     except (TypeError, ValueError):
         hours = int(DEFAULT_SETTINGS["update_check_interval_hours"])
     return max(1, min(24 * 30, hours))

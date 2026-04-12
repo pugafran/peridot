@@ -115,6 +115,13 @@ def test_sanitize_language_falls_back_to_default():
     assert peridot.sanitize_language("") == peridot.DEFAULT_SETTINGS["language"]
 
 
+def test_sanitize_update_check_interval_hours_accepts_floatish_values():
+    assert peridot.sanitize_update_check_interval_hours("24.0") == 24
+    assert peridot.sanitize_update_check_interval_hours("1e1") == 10
+    # Clamp to at least 1 hour.
+    assert peridot.sanitize_update_check_interval_hours("0.5") == 1
+
+
 def test_install_hint_prefers_repo_virtualenv_python(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     venv_python = tmp_path / ".venv" / "bin" / "python"
@@ -123,6 +130,8 @@ def test_install_hint_prefers_repo_virtualenv_python(tmp_path, monkeypatch):
 
     hint = peridot.install_hint(".")
     assert ".venv/bin/python" in hint.replace("\\", "/")
+
+#
 
 
 def test_install_hint_handles_windows_virtualenv_layout(tmp_path, monkeypatch):
