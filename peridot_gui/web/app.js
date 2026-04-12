@@ -519,6 +519,9 @@ async function boot() {
     state.lang = (state.meta.language || 'en').toLowerCase();
     // meta.version is raw `peridot --version` output (e.g. "peridot 0.4.7")
     $('#metaVersion').textContent = state.meta.version || 'unknown';
+    if (!state.meta.version && state.meta.version_error) {
+      toast(`Peridot CLI not detected (${state.meta.version_error}). Using: ${JSON.stringify(state.meta.peridot_cmd || [])}`, 'warn');
+    }
     const gh = state.meta.gui && state.meta.gui.host ? state.meta.gui.host : '127.0.0.1';
     const gp = state.meta.gui && state.meta.gui.port ? state.meta.gui.port : 8844;
     const addr = `${gh}:${gp}`;

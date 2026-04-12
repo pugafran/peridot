@@ -277,6 +277,9 @@ def create_app():
         # Minimal metadata for the GUI.
         # Presets are static in peridot.py, so we expose them here so the UI can render cards.
         # Determine peridot version from `peridot --version` (stable, lightweight).
+        peridot_cmd = _peridot_cmd_prefix()
+        peridot_version = None
+        peridot_version_error = None
         try:
             creationflags = 0
             if os.name == "nt":
@@ -286,7 +289,7 @@ def create_app():
             env.setdefault("PYTHONUTF8", "1")
             env.setdefault("PYTHONIOENCODING", "utf-8")
             p = subprocess.run(
-                [*_peridot_cmd_prefix(), "--version"],
+                [*peridot_cmd, "--version"],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -295,8 +298,10 @@ def create_app():
                 creationflags=creationflags,
             )
             peridot_version = (p.stdout or "").strip() if p.returncode == 0 else None
-        except Exception:
-            peridot_version = None
+            if p.returncode != 0:
+                peridot_version_error = (p.stderr or p.stdout or "").strip() or f"exit {p.returncode}"
+        except Exception as exc:  # noqa: BLE001
+            peridot_version_error = str(exc)
 
         host = os.environ.get("COMPUTERNAME") or os.environ.get("HOSTNAME") or ""
         language = None
@@ -328,6 +333,8 @@ def create_app():
 
         return {
             "version": peridot_version,
+            "version_error": peridot_version_error,
+            "peridot_cmd": peridot_cmd,
             "host": host,
             "language": language,
             "gui": {
