@@ -247,15 +247,24 @@ def create_app():
 
     @app.get("/web/{asset:path}")
     def web_asset(asset: str):
-        # Windows-friendly path guard:
+        # Windows-first path guard:
         # - Avoid naive string prefix checks (case/sep issues on Windows)
         # - Ensure the resolved asset stays within web_root
         root = web_root.resolve()
         path = (web_root / asset).resolve()
+
+        # pathlib.Path.relative_to() is strict about casing on some platforms.
+        # Use a normcased commonpath check to behave reliably on Windows.
+        import os as _os
+
+        root_s = _os.path.normcase(str(root))
+        path_s = _os.path.normcase(str(path))
         try:
-            path.relative_to(root)
+            if _os.path.commonpath([path_s, root_s]) != root_s:
+                raise HTTPException(status_code=400, detail="invalid asset")
         except Exception:
             raise HTTPException(status_code=400, detail="invalid asset")
+
         if not path.exists() or not path.is_file():
             raise HTTPException(status_code=404, detail="not found")
         return FileResponse(path)
