@@ -655,8 +655,11 @@ def fetch_latest_pypi_version(package: str = "peridot-cli") -> str | None:
 
 
 def should_check_for_updates(settings: dict, *, now_ts: int | None = None) -> bool:
-    if os.environ.get("PERIDOT_UPDATE_CHECK", "").strip() in {"0", "false", "no", "off"}:
+    env_value = os.environ.get("PERIDOT_UPDATE_CHECK", "").strip().lower()
+    if env_value in {"0", "false", "no", "off", "disable", "disabled"}:
         return False
+    if env_value in {"1", "true", "yes", "on", "force"}:
+        return True
 
     if not bool(settings.get("update_check_enabled", True)):
         return False

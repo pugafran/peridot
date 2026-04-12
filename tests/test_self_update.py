@@ -17,8 +17,32 @@ def test_should_check_for_updates_respects_interval(monkeypatch):
         "update_check_interval_hours": 24,
     }
 
+    monkeypatch.delenv("PERIDOT_UPDATE_CHECK", raising=False)
+
     assert peridot.should_check_for_updates(settings, now_ts=100) is False
     assert peridot.should_check_for_updates(settings, now_ts=100 + 24 * 3600) is True
+
+
+def test_should_check_for_updates_env_can_disable(monkeypatch):
+    settings = {
+        "update_check_enabled": True,
+        "update_check_last_ts": 0,
+        "update_check_interval_hours": 0,
+    }
+
+    monkeypatch.setenv("PERIDOT_UPDATE_CHECK", "0")
+    assert peridot.should_check_for_updates(settings, now_ts=10) is False
+
+
+def test_should_check_for_updates_env_can_force(monkeypatch):
+    settings = {
+        "update_check_enabled": False,
+        "update_check_last_ts": 999999,
+        "update_check_interval_hours": 999999,
+    }
+
+    monkeypatch.setenv("PERIDOT_UPDATE_CHECK", "1")
+    assert peridot.should_check_for_updates(settings, now_ts=100) is True
 
 
 def test_maybe_suggest_self_update_emits_message_when_newer(monkeypatch, capsys):
