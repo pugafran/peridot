@@ -103,6 +103,86 @@ function clampStr(s, n=64) {
   return s.length > n ? s.slice(0, n-1) + '…' : s;
 }
 
+function updatePackJobUI(j) {
+  state.pack.job = j;
+  const outEl = $('#packJob');
+  if (outEl) outEl.textContent = JSON.stringify(j, null, 2);
+
+  // Enable output helpers when we know the output path.
+  const outputPath = j && j.result && j.result.output;
+  if (outputPath) {
+    const btnReveal = $('#btnPackReveal');
+    const btnCopy = $('#btnPackCopy');
+    if (btnReveal) btnReveal.disabled = false;
+    if (btnCopy) btnCopy.disabled = false;
+
+    if (btnReveal) {
+      btnReveal.onclick = async () => {
+        try { await revealPath(outputPath); } catch (e) { toast(String(e), 'error'); }
+      };
+    }
+    if (btnCopy) {
+      btnCopy.onclick = async () => {
+        if (await setClipboard(outputPath)) toastKey('toast.copied');
+      };
+    }
+  }
+
+  const p = j && j.result && j.result.progress ? j.result.progress : null;
+  if (p && p.type === 'pack_progress') {
+    const pct = p.bytes_total
+      ? Math.min(100, Math.round((p.bytes_done / p.bytes_total) * 100))
+      : Math.min(100, Math.round((p.files_done / p.files_total) * 100));
+    const bar = $('#packProgressBar');
+    if (bar) bar.style.width = `${pct}%`;
+    const cur = p.path ? ` · ${clampStr(String(p.path).replace(/\\/g,'/'), 54)}` : '';
+    const sk = (typeof p.skipped === 'number' && p.skipped > 0) ? ` · skipped ${p.skipped}` : '';
+    const st = $('#packRunStatus');
+    if (st) st.textContent = `packing ${pct}% · ${p.files_done}/${p.files_total}${sk}${cur}`;
+  } else if (p && p.type === 'pack_skip') {
+    const cur = p.path ? ` · ${clampStr(String(p.path).replace(/\\/g,'/'), 54)}` : '';
+    const sk = (typeof p.skipped === 'number' && p.skipped > 0) ? `skipped ${p.skipped}` : 'skipped file';
+    const st = $('#packRunStatus');
+    if (st) st.textContent = `${sk}${cur}`;
+  } else if (p && p.type === 'scan_start') {
+    const bar = $('#packProgressBar');
+    if (bar) bar.style.width = '5%';
+    const st = $('#packRunStatus');
+    if (st) st.textContent = 'scanning…';
+  } else if (p && p.type === 'scan_progress') {
+    const bar = $('#packProgressBar');
+    if (bar) bar.style.width = '10%';
+    const cur = p.current ? ` · ${clampStr(String(p.current).replace(/\\/g,'/'), 54)}` : '';
+    const st = $('#packRunStatus');
+    if (st) st.textContent = `scanning · ${p.files || 0} files${cur}`;
+  } else if (p && p.type === 'scan_done') {
+    const bar = $('#packProgressBar');
+    if (bar) bar.style.width = '20%';
+    const st = $('#packRunStatus');
+    if (st) st.textContent = `scanned · ${p.files || 0} files`;
+  } else if (p && p.type === 'pack_done') {
+    const bar = $('#packProgressBar');
+    if (bar) bar.style.width = '95%';
+    const st = $('#packRunStatus');
+    if (st) st.textContent = t(state.lang, 'status.finalizing');
+  }
+
+  if (j && j.status === 'done') {
+    const out = j.result && j.result.output ? j.result.output : null;
+    const bytes = j.result && j.result.output_bytes ? fmtBytes(j.result.output_bytes) : '';
+    const sum = $('#packSummary');
+    if (sum) sum.textContent = out ? `output: ${out}${bytes ? ' · ' + bytes : ''}` : 'done';
+    const bar = $('#packProgressBar');
+    if (bar) bar.style.width = '100%';
+  }
+  if (j && j.status === 'error') {
+    const sum = $('#packSummary');
+    if (sum) sum.textContent = `error: ${j.error || ''}`;
+    const bar = $('#packProgressBar');
+    if (bar) bar.style.width = '100%';
+  }
+}
+
 function toastKey(key, vars={}, kind='info') {
   return toast(t(state.lang, key, vars), kind);
 }
@@ -436,57 +516,7 @@ async function startPackJob() {
       await new Promise((resolve) => {
         es.onmessage = (ev) => {
           const j = JSON.parse(ev.data);
-          state.pack.job = j;
-
-          const outputPath = j.result && j.result.output;
-          if (outputPath) {
-            $('#btnPackReveal').disabled = false;
-            $('#btnPackCopy').disabled = false;
-            $('#btnPackReveal').onclick = async () => {
-              try { await revealPath(outputPath); } catch (e) { toast(String(e), 'error'); }
-            };
-            $('#btnPackCopy').onclick = async () => { if (await setClipboard(outputPath)) toastKey('toast.copied'); };
-          }
-
-          const p = j.result && j.result.progress;
-          if (p && p.type === 'pack_progress') {
-            const pct = p.bytes_total ? Math.min(100, Math.round((p.bytes_done / p.bytes_total) * 100)) : Math.min(100, Math.round((p.files_done / p.files_total) * 100));
-            $('#packProgressBar').style.width = `${pct}%`;
-            const cur = p.path ? ` · ${clampStr(String(p.path).replace(/\\/g,'/'), 54)}` : '';
-            const sk = (typeof p.skipped === 'number' && p.skipped > 0) ? ` · skipped ${p.skipped}` : '';
-            $('#packRunStatus').textContent = `packing ${pct}% · ${p.files_done}/${p.files_total}${sk}${cur}`;
-          } else if (p && p.type === 'pack_skip') {
-            // Surface skips in the status line (common on Windows when some files are locked).
-            const cur = p.path ? ` · ${clampStr(String(p.path).replace(/\\/g,'/'), 54)}` : '';
-            const sk = (typeof p.skipped === 'number' && p.skipped > 0) ? `skipped ${p.skipped}` : 'skipped file';
-            $('#packRunStatus').textContent = `${sk}${cur}`;
-          } else if (p && p.type === 'scan_start') {
-            $('#packProgressBar').style.width = '5%';
-            $('#packRunStatus').textContent = 'scanning…';
-          } else if (p && p.type === 'scan_progress') {
-            $('#packProgressBar').style.width = '10%';
-            const cur = p.current ? ` · ${clampStr(String(p.current).replace(/\\/g,'/'), 54)}` : '';
-            $('#packRunStatus').textContent = `scanning · ${p.files || 0} files${cur}`;
-          } else if (p && p.type === 'scan_done') {
-            $('#packProgressBar').style.width = '20%';
-            $('#packRunStatus').textContent = `scanned · ${p.files || 0} files`;
-          } else if (p && p.type === 'pack_done') {
-            $('#packProgressBar').style.width = '95%';
-            $('#packRunStatus').textContent = t(state.lang, 'status.finalizing');
-          }
-
-          if (j.status === 'done' && j.result && j.result.output) {
-            const out = j.result.output;
-            const bytes = j.result.output_bytes ? fmtBytes(j.result.output_bytes) : '';
-            $('#packSummary').textContent = `output: ${out}${bytes ? ' · ' + bytes : ''}`;
-            $('#packProgressBar').style.width = '100%';
-          }
-          if (j.status === 'error') {
-            $('#packSummary').textContent = `error: ${j.error || ''}`;
-            $('#packProgressBar').style.width = '100%';
-          }
-
-          $('#packJob').textContent = JSON.stringify(j, null, 2);
+          updatePackJobUI(j);
           if (j.status === 'done') { toastKey('toast.packCompleted', {}, 'info'); es.close(); resolve(); }
           if (j.status === 'error') { toastKey('toast.packFailed', { err: (j.error||'') }, 'error'); es.close(); resolve(); }
         };
@@ -502,21 +532,12 @@ async function startPackJob() {
     if (!state.pack.job || (state.pack.job.status !== 'done' && state.pack.job.status !== 'error')) {
       while (true) {
         const j = await api(`/api/jobs/${state.pack.jobId}`);
-        state.pack.job = j;
-        $('#packJob').textContent = JSON.stringify(j, null, 2);
+        updatePackJobUI(j);
         if (j.status === 'done') {
-          if (j.result && j.result.output) {
-            const out = j.result.output;
-            const bytes = j.result.output_bytes ? fmtBytes(j.result.output_bytes) : '';
-            $('#packSummary').textContent = `output: ${out}${bytes ? ' · ' + bytes : ''}`;
-            $('#packProgressBar').style.width = '100%';
-          }
           toastKey('toast.packCompleted', {}, 'info');
           break;
         }
         if (j.status === 'error') {
-          $('#packSummary').textContent = `error: ${j.error || ''}`;
-          $('#packProgressBar').style.width = '100%';
           toastKey('toast.packFailed', { err: (j.error||'') }, 'error');
           break;
         }
