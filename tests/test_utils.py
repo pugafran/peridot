@@ -136,6 +136,21 @@ def test_sanitize_language_falls_back_to_default():
     assert peridot.sanitize_language("") == peridot.DEFAULT_SETTINGS["language"]
 
 
+def test_sanitize_language_setting_preserves_auto():
+    assert peridot.sanitize_language_setting("auto") == "auto"
+    assert peridot.sanitize_language_setting("system") == "auto"
+
+
+def test_save_and_load_settings_keep_auto_language(tmp_path):
+    path = tmp_path / "settings.json"
+
+    peridot.save_settings({"language": "auto"}, settings_path=path)
+    loaded = peridot.load_settings(settings_path=path)
+
+    assert loaded["language"] == "auto"
+    assert peridot.effective_language_from_setting(loaded["language"]) in {"es", "en"}
+
+
 def test_sanitize_update_check_interval_hours_accepts_floatish_values():
     assert peridot.sanitize_update_check_interval_hours("24.0") == 24
     assert peridot.sanitize_update_check_interval_hours("1e1") == 10

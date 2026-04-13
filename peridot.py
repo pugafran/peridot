@@ -942,13 +942,20 @@ def sanitize_jobs(value: object) -> int:
 
 
 def sanitize_language(value: object) -> str:
-    """Normalize language values.
+    """Normalize *effective* language values.
+
+    Returns a concrete language code ("es" or "en").
 
     Accepts exact codes ("es", "en") and common locale variants such as
     "es-ES", "en_US" or "EN-us" by reducing them to the base language.
 
     Also accepts some common OS locale *names* (especially on Windows), such as
     "Spanish_Spain" / "English_United States".
+
+    Note:
+        This function intentionally does NOT return "auto"/"system". Those are
+        settings-layer values that must be resolved to a concrete language
+        before being used for rendering.
     """
 
     raw = str(value or DEFAULT_SETTINGS["language"]).strip().lower()
@@ -974,6 +981,33 @@ def sanitize_language(value: object) -> str:
         return "en"
 
     return DEFAULT_SETTINGS["language"]
+
+
+def sanitize_language_setting(value: object) -> str:
+    """Normalize the persisted language setting.
+
+    Accepts:
+      - "es" / "en" (and locale variants) -> "es"/"en"
+      - "auto" or "system" -> "auto" (stored sentinel)
+
+    This keeps the intent (automatic language selection) when saving/loading
+    settings, while callers can resolve it via detect_runtime_language() or
+    detect_system_language_hint().
+    """
+
+    raw = str(value or "").strip().lower()
+    if raw in {"auto", "system"}:
+        return "auto"
+    return sanitize_language(value)
+
+
+def effective_language_from_setting(value: object) -> str:
+    """Resolve a language setting to a concrete language code ("es"/"en")."""
+
+    raw = str(value or "").strip().lower()
+    if raw in {"auto", "system"}:
+        return detect_system_language_hint() or DEFAULT_SETTINGS["language"]
+    return sanitize_language(value)
 
 
 def sanitize_update_check_enabled(value: object) -> bool:
@@ -1327,7 +1361,7 @@ def load_settings(settings_path: Path = DEFAULT_SETTINGS_STORE) -> dict:
     data.update(raw)
     data["compression_level"] = sanitize_compression_level(data.get("compression_level"))
     data["jobs"] = sanitize_jobs(data.get("jobs"))
-    data["language"] = sanitize_language(data.get("language"))
+    data["language"] = sanitize_language_setting(data.get("language"))
     data["update_check_enabled"] = sanitize_update_check_enabled(data.get("update_check_enabled"))
     data["update_check_interval_hours"] = sanitize_update_check_interval_hours(data.get("update_check_interval_hours"))
     try:
@@ -1344,7 +1378,7 @@ def save_settings(data: dict, settings_path: Path = DEFAULT_SETTINGS_STORE) -> N
     merged["compression_level"] = sanitize_compression_level(merged.get("compression_level"))
     merged["jobs"] = sanitize_jobs(merged.get("jobs"))
     merged.pop("encryption", None)
-    merged["language"] = sanitize_language(merged.get("language"))
+    merged["language"] = sanitize_language_setting(merged.get("language"))
     settings_path.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
@@ -3723,7 +3757,11 @@ def interactive_settings_editor(settings_path: Path = DEFAULT_SETTINGS_STORE) ->
     settings["jobs"] = sanitize_jobs(raw_jobs)
     console.print(f"[dim]{trf('CPU detectada: {cpu} | workers activos: {jobs}', cpu=cpu_total, jobs=settings['jobs'])}[/dim]")
     settings["language"] = sanitize_language(
-        Prompt.ask(tr("Language"), choices=["es", "en"], default=settings["language"])
+        Prompt.ask(
+            tr("Language"),
+            choices=["es", "en"],
+            default=effective_language_from_setting(settings["language"]),
+        )
     )
     if not Confirm.ask(tr("Save settings?"), default=True):
         console.print(f"[yellow]{tr('Operacion cancelada.')}[/yellow]")
@@ -3751,11 +3789,11 @@ def cmd_settings(args) -> None:
             elif key == "jobs":
                 settings[key] = sanitize_jobs(value)
             elif key == "language":
-                settings[key] = sanitize_language(value)
+                settings[key] = sanitize_language_setting(value)
             else:
                 die(f"Setting no soportado: {key}")
         save_settings(settings, settings_path)
-        set_current_language(settings["language"])
+        set_current_language(effective_language_from_setting(settings["language"]))
 
         if json_mode:
             print(json.dumps({"settings_path": str(settings_path), "settings": settings}, indent=2, sort_keys=True))
