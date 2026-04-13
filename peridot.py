@@ -975,7 +975,7 @@ def sanitize_language(value: object) -> str:
         return base
 
     # Accept common language names.
-    if base in {"spanish", "espanol"}:
+    if base in {"spanish", "espanol", "castellano"}:
         return "es"
     if base == "english":
         return "en"

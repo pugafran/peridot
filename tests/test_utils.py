@@ -129,6 +129,8 @@ def test_sanitize_language_accepts_locales():
 
     # Also accept a language name with accents.
     assert peridot.sanitize_language("Español") == "es"
+    # And a common synonym.
+    assert peridot.sanitize_language("Castellano") == "es"
 
 
 def test_sanitize_language_falls_back_to_default():
