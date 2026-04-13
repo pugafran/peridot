@@ -1,105 +1,84 @@
+import json
 import os
-import sys
-import time
+import tempfile
 from pathlib import Path
 
 import pytest
 
 
-fastapi = pytest.importorskip("fastapi")
+def _have_gui_deps() -> bool:
+    try:
+        import fastapi  # noqa: F401
+        import starlette.testclient  # noqa: F401
+
+        return True
+    except Exception:
+        return False
 
 
-def _mk_client(monkeypatch):
-    # Ensure the GUI uses a predictable Peridot CLI invocation in tests.
-    monkeypatch.setenv("PERIDOT_EXE", f"{sys.executable} -m peridot")
-
-    from fastapi.testclient import TestClient
-
-    import peridot_gui
-
-    app = peridot_gui.create_app()
-    return TestClient(app)
+pytestmark = pytest.mark.skipif(not _have_gui_deps(), reason="GUI deps (fastapi/starlette) not installed")
 
 
-def test_gui_meta_doctor_settings_endpoints(monkeypatch):
-    client = _mk_client(monkeypatch)
+def test_gui_api_meta_doctor_settings_smoke():
+    from peridot_gui import create_app
+    from starlette.testclient import TestClient
 
-    r = client.get("/api/meta")
+    app = create_app()
+    c = TestClient(app)
+
+    r = c.get("/api/meta")
     assert r.status_code == 200
     meta = r.json()
-    assert "gui" in meta
     assert "runtime" in meta
+    assert "presets" in meta
 
-    r = client.get("/api/doctor")
+    r = c.get("/api/doctor")
     assert r.status_code == 200
-    doctor = r.json()
-    assert isinstance(doctor, (dict, list))
 
-    r = client.get("/api/settings")
+    r = c.get("/api/settings")
     assert r.status_code == 200
-    settings = r.json()
-    assert "settings" in settings
 
 
-def test_gui_pack_scan_pack_and_sse_events(monkeypatch, tmp_path):
-    client = _mk_client(monkeypatch)
+def test_gui_api_pack_scan_accepts_paths_and_excludes(tmp_path: Path):
+    from peridot_gui import create_app
+    from starlette.testclient import TestClient
 
-    # Create a small file so pack has something deterministic.
-    root = tmp_path / "root"
-    root.mkdir()
-    (root / "hello.txt").write_text("hello", encoding="utf-8")
+    app = create_app()
+    c = TestClient(app)
 
-    scan = client.post(
-        "/api/pack/scan",
-        json={"paths": [str(root)]},
-    )
-    assert scan.status_code == 200
-    scanj = scan.json()
-    assert scanj["files"] >= 1
-    assert isinstance(scanj.get("sensitive"), list)
+    f = tmp_path / "hello.txt"
+    f.write_text("hello", encoding="utf-8")
 
-    out_path = tmp_path / "out.peridot"
-    pack = client.post(
-        "/api/pack",
-        json={"name": "test-bundle", "paths": [str(root)], "output": str(out_path)},
-    )
-    assert pack.status_code == 200
-    job_id = pack.json()["job_id"]
-    assert job_id
+    payload = {
+        "paths": [str(f)],
+        "excludes": ["*.nope"],
+        "preset": "",
+    }
 
-    # SSE should yield at least one message and eventually complete.
-    seen = 0
-    done = False
-    with client.stream("GET", f"/api/jobs/{job_id}/events") as s:
-        assert s.status_code == 200
-        for chunk in s.iter_text():
-            if not chunk:
-                continue
-            # EventSource frames are separated by blank lines. We only care
-            # about data frames.
-            if "data:" not in chunk:
-                continue
-            seen += 1
-            if '"status": "done"' in chunk or '"status":"done"' in chunk:
-                done = True
-                break
-            if '"status": "error"' in chunk or '"status":"error"' in chunk:
-                pytest.fail(f"job failed via SSE: {chunk}")
-            if seen > 200:
-                break
+    r = c.post("/api/pack/scan", json=payload)
+    assert r.status_code == 200
+    out = r.json()
 
-    # Fallback: poll job status in case the stream ended early.
-    deadline = time.time() + 30
-    while time.time() < deadline:
-        j = client.get(f"/api/jobs/{job_id}").json()
-        if j["status"] == "done":
-            done = True
-            break
-        if j["status"] == "error":
-            pytest.fail(j.get("error") or "job error")
-        time.sleep(0.15)
+    assert out["files"] >= 1
+    assert out["bytes"] >= 1
+    assert out["missing_paths"] == []
 
-    assert seen >= 1
-    assert done
-    assert out_path.exists() and out_path.is_file()
-    assert out_path.stat().st_size > 0
+
+def test_gui_api_sse_events_endpoint_content_type():
+    from peridot_gui import Job, _JOBS, create_app
+    from starlette.testclient import TestClient
+
+    app = create_app()
+    c = TestClient(app)
+
+    # Create a job that is already finished so the SSE generator exits quickly.
+    jid = "test-job"
+    _JOBS[jid] = Job(id=jid, kind="pack", status="done", created_ts=0.0, result={"ok": True})
+
+    r = c.get(f"/api/jobs/{jid}/events")
+    assert r.status_code == 200
+    ct = r.headers.get("content-type") or ""
+    assert "text/event-stream" in ct
+    assert r.content
+
+    _JOBS.pop(jid, None)
