@@ -443,10 +443,18 @@ async function startPackJob() {
           if (p && p.type === 'pack_progress') {
             const pct = p.bytes_total ? Math.min(100, Math.round((p.bytes_done / p.bytes_total) * 100)) : Math.min(100, Math.round((p.files_done / p.files_total) * 100));
             $('#packProgressBar').style.width = `${pct}%`;
-            $('#packRunStatus').textContent = `packing ${pct}% · ${p.files_done}/${p.files_total}`;
+            const cur = p.path ? ` · ${clampStr(String(p.path).replace(/\\/g,'/'), 54)}` : '';
+            const sk = (typeof p.skipped === 'number' && p.skipped > 0) ? ` · skipped ${p.skipped}` : '';
+            $('#packRunStatus').textContent = `packing ${pct}% · ${p.files_done}/${p.files_total}${sk}${cur}`;
+          } else if (p && p.type === 'pack_skip') {
+            // Surface skips in the status line (common on Windows when some files are locked).
+            const cur = p.path ? ` · ${clampStr(String(p.path).replace(/\\/g,'/'), 54)}` : '';
+            const sk = (typeof p.skipped === 'number' && p.skipped > 0) ? `skipped ${p.skipped}` : 'skipped file';
+            $('#packRunStatus').textContent = `${sk}${cur}`;
           } else if (p && p.type === 'scan_progress') {
             $('#packProgressBar').style.width = '10%';
-            $('#packRunStatus').textContent = `scanning · ${p.files || 0} files`;
+            const cur = p.current ? ` · ${clampStr(String(p.current).replace(/\\/g,'/'), 54)}` : '';
+            $('#packRunStatus').textContent = `scanning · ${p.files || 0} files${cur}`;
           } else if (p && p.type === 'scan_done') {
             $('#packProgressBar').style.width = '20%';
             $('#packRunStatus').textContent = `scanned · ${p.files || 0} files`;
@@ -726,9 +734,12 @@ async function boot() {
         const j = JSON.parse(ev.data);
         $('#applyOut').textContent = JSON.stringify(j, null, 2);
 
-        const pct = j.result && j.result.progress && typeof j.result.progress.percent === 'number' ? j.result.progress.percent : null;
+        const prog = j.result && j.result.progress ? j.result.progress : null;
+        const pct = (prog && typeof prog.percent === 'number') ? prog.percent : null;
         if (pct !== null) {
           $('#applyProgressBar').style.width = `${Math.max(0, Math.min(100, pct))}%`;
+          const cur = prog.current ? ` · ${clampStr(String(prog.current).replace(/\\/g,'/'), 54)}` : '';
+          $('#applySummary').textContent = `${pct}%${cur}`;
         } else {
           // best-effort: show activity
           if (j.status === 'running') $('#applyProgressBar').style.width = '50%';
