@@ -304,6 +304,21 @@ function renderPackWizard() {
   $$('.pack-step').forEach(el => el.classList.add('hidden'));
   $('#pack-step-'+step)?.classList.remove('hidden');
 
+  // step pills highlight
+  $$('#packStepPills .step-pill').forEach(el => {
+    const isActive = Number(el.dataset.step) === step;
+    el.classList.toggle('border-emerald-700', isActive);
+    el.classList.toggle('text-emerald-200', isActive);
+    el.classList.toggle('bg-emerald-500/10', isActive);
+    if (!isActive) {
+      el.classList.add('border-slate-800');
+      el.classList.add('bg-slate-950/40');
+    } else {
+      el.classList.remove('border-slate-800');
+      el.classList.remove('bg-slate-950/40');
+    }
+  });
+
   $('#packName').value = state.pack.name;
   $('#packPaths').value = state.pack.paths.join('\n');
   $('#packOutput').value = state.pack.output;
@@ -828,11 +843,23 @@ async function boot() {
 
     const current = Number($('#packStep').value);
     const next = Math.min(4, current + 1);
+
+    // lightweight validation for a less confusing wizard flow
+    if (current === 1 && !state.preset) {
+      toast('Pick a preset to continue.', 'warn');
+      return;
+    }
+
     // persist fields
     state.pack.name = ($('#packName').value||'').trim();
     state.pack.paths = parsePathsInput($('#packPaths').value||'');
     state.pack.output = ($('#packOutput').value||'').trim();
     state.pack.userExcludes = parsePatternsInput($('#packExcludes').value||'');
+
+    if (current === 2 && !state.pack.name) {
+      toastKey('toast.nameRequired', {}, 'error');
+      return;
+    }
 
     // entering sensitive step: run scan
     if (next === 3) {
