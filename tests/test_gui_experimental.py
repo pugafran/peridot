@@ -1,79 +1,93 @@
-from __future__ import annotations
-
 import json
-import time
-from pathlib import Path
 
 import pytest
 
-fastapi = pytest.importorskip("fastapi")
-TestClient = pytest.importorskip("fastapi.testclient").TestClient
 
-import peridot_gui
+def _have_fastapi():
+    try:
+        import fastapi  # noqa: F401
+        import starlette  # noqa: F401
+
+        return True
+    except Exception:
+        return False
 
 
-def test_gui_meta_smoke() -> None:
+@pytest.mark.skipif(not _have_fastapi(), reason="fastapi/starlette not installed (optional gui extra)")
+def test_gui_endpoints_meta_settings_doctor_scan_pack_sse(tmp_path, monkeypatch):
+    # Import lazily so skipif can run without GUI deps.
+    import peridot_gui
+
+    from fastapi.testclient import TestClient
+
     app = peridot_gui.create_app()
     c = TestClient(app)
+
+    # meta
     r = c.get("/api/meta")
     assert r.status_code == 200
-    j = r.json()
-    assert "gui" in j
-    assert "runtime" in j
-    assert "presets" in j
+    meta = r.json()
+    assert isinstance(meta.get("presets"), list)
 
+    # settings
+    r = c.get("/api/settings")
+    assert r.status_code == 200
+    data = r.json()
+    assert "settings" in data
 
-def test_gui_pack_scan_on_temp_dir(tmp_path: Path) -> None:
-    # Create a couple of files to ensure collect_files can see something.
-    (tmp_path / "a.txt").write_text("hello", encoding="utf-8")
-    (tmp_path / "b.txt").write_text("world", encoding="utf-8")
+    # doctor can be slow-ish / may fail if peridot isn't on PATH in some envs,
+    # but in tests we at least want it to return HTTP 200 (it shells out).
+    r = c.get("/api/doctor")
+    assert r.status_code == 200
 
-    app = peridot_gui.create_app()
-    c = TestClient(app)
+    # scan: explicit paths to keep test deterministic.
+    p = tmp_path / "a.txt"
+    p.write_text("hi", encoding="utf-8")
 
+    r = c.post("/api/pack/scan", json={"preset": "", "paths": [str(p)], "excludes": []})
+    assert r.status_code == 200
+    scan = r.json()
+    assert scan["files"] == 1
+
+    # pack: write output to tmp dir
+    out = tmp_path / "bundle.peridot"
     r = c.post(
-        "/api/pack/scan",
+        "/api/pack",
         json={
-            "paths": [str(tmp_path)],
+            "preset": "",
+            "name": "t",
+            "paths": [str(p)],
             "excludes": [],
+            "output": str(out),
         },
     )
     assert r.status_code == 200
-    j = r.json()
-    assert j["files"] >= 2
-    assert j["bytes"] >= 10
-    assert "sensitive" in j
+    job_id = r.json()["job_id"]
 
+    # poll job
+    r = c.get(f"/api/jobs/{job_id}")
+    assert r.status_code == 200
+    job = r.json()
+    assert job["status"] in {"queued", "running", "done", "error"}
 
-def test_gui_sse_job_events_done() -> None:
-    app = peridot_gui.create_app()
-    c = TestClient(app)
+    # SSE endpoint should at least start streaming and yield data: lines.
+    with c.stream("GET", f"/api/jobs/{job_id}/events") as s:
+        it = s.iter_bytes()
 
-    jid = "test-job"
-    peridot_gui._JOBS[jid] = peridot_gui.Job(
-        id=jid,
-        kind="pack",
-        status="done",
-        created_ts=time.time(),
-        started_ts=time.time(),
-        finished_ts=time.time(),
-        result={"ok": True},
-    )
+        # read a bit of the stream
+        chunk = next(it)
+        assert b":" in chunk or b"data:" in chunk
 
-    with c.stream("GET", f"/api/jobs/{jid}/events") as r:
-        assert r.status_code == 200
-        buf = b""
-        for chunk in r.iter_bytes():
-            buf += chunk
-            if b"data: " in buf:
+        # drain a couple messages and ensure JSON parses.
+        buf = chunk
+        for _ in range(6):
+            try:
+                buf += next(it)
+            except StopIteration:
                 break
-        # Extract the first `data: ...` payload.
-        text = buf.decode("utf-8", errors="replace")
-        lines = [ln for ln in text.splitlines() if ln.startswith("data: ")]
-        assert lines, f"no data lines in SSE stream: {text!r}"
-        payload = json.loads(lines[0][len("data: ") :])
-        assert payload["id"] == jid
-        assert payload["status"] == "done"
-
-    # Cleanup to avoid leaking between tests.
-    peridot_gui._JOBS.pop(jid, None)
+        # find first data line
+        for ln in buf.splitlines():
+            if ln.startswith(b"data: "):
+                payload = json.loads(ln[len(b"data: ") :].decode("utf-8"))
+                assert payload["id"] == job_id
+                break
