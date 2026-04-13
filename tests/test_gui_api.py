@@ -1,84 +1,115 @@
-import json
 import os
-import tempfile
+import sys
+import time
 from pathlib import Path
 
 import pytest
 
 
-def _have_gui_deps() -> bool:
-    try:
-        import fastapi  # noqa: F401
-        import starlette.testclient  # noqa: F401
-
-        return True
-    except Exception:
-        return False
+fastapi = pytest.importorskip("fastapi")
+pytest.importorskip("starlette")
 
 
-pytestmark = pytest.mark.skipif(not _have_gui_deps(), reason="GUI deps (fastapi/starlette) not installed")
+def _make_client(monkeypatch):
+    # Ensure the GUI uses a deterministic CLI invocation in tests.
+    # Using sys.executable avoids relying on a `python` shim on PATH.
+    monkeypatch.setenv("PERIDOT_EXE", f"{sys.executable} -m peridot")
+
+    from fastapi.testclient import TestClient
+
+    import peridot_gui
+
+    app = peridot_gui.create_app()
+    return TestClient(app), peridot_gui
 
 
-def test_gui_api_meta_doctor_settings_smoke():
-    from peridot_gui import create_app
-    from starlette.testclient import TestClient
+def test_api_meta_smoke(monkeypatch):
+    client, _ = _make_client(monkeypatch)
 
-    app = create_app()
-    c = TestClient(app)
-
-    r = c.get("/api/meta")
+    r = client.get("/api/meta")
     assert r.status_code == 200
-    meta = r.json()
-    assert "runtime" in meta
-    assert "presets" in meta
+    j = r.json()
 
-    r = c.get("/api/doctor")
+    assert "gui" in j
+    assert "base_url" in j["gui"]
+    assert isinstance(j.get("peridot_cmd"), list)
+    assert "runtime" in j
+    assert "presets" in j
+
+
+def test_api_settings_smoke(monkeypatch):
+    client, _ = _make_client(monkeypatch)
+
+    r = client.get("/api/settings")
     assert r.status_code == 200
+    j = r.json()
 
-    r = c.get("/api/settings")
+    assert "settings_path" in j
+    assert "settings" in j
+
+
+def test_api_doctor_smoke(monkeypatch):
+    client, _ = _make_client(monkeypatch)
+
+    r = client.get("/api/doctor")
     assert r.status_code == 200
+    j = r.json()
+
+    # doctor JSON shape isn't strictly fixed, but it should be JSON.
+    assert isinstance(j, (dict, list))
 
 
-def test_gui_api_pack_scan_accepts_paths_and_excludes(tmp_path: Path):
-    from peridot_gui import create_app
-    from starlette.testclient import TestClient
+def test_api_pack_scan_uses_real_paths(monkeypatch, tmp_path: Path):
+    client, _ = _make_client(monkeypatch)
 
-    app = create_app()
-    c = TestClient(app)
+    # Create a tiny directory with one file to scan.
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "a.txt").write_text("hello", encoding="utf-8")
 
-    f = tmp_path / "hello.txt"
-    f.write_text("hello", encoding="utf-8")
-
-    payload = {
-        "paths": [str(f)],
-        "excludes": ["*.nope"],
-        "preset": "",
-    }
-
-    r = c.post("/api/pack/scan", json=payload)
+    r = client.post(
+        "/api/pack/scan",
+        json={
+            "preset": "",
+            "paths": [str(root)],
+            "excludes": [],
+        },
+    )
     assert r.status_code == 200
-    out = r.json()
+    j = r.json()
 
-    assert out["files"] >= 1
-    assert out["bytes"] >= 1
-    assert out["missing_paths"] == []
+    assert j["files"] >= 1
+    assert j["bytes"] >= 1
+    assert j["missing_paths"] == []
 
 
-def test_gui_api_sse_events_endpoint_content_type():
-    from peridot_gui import Job, _JOBS, create_app
-    from starlette.testclient import TestClient
+def test_sse_events_endpoint_finishes(monkeypatch):
+    client, peridot_gui = _make_client(monkeypatch)
 
-    app = create_app()
-    c = TestClient(app)
-
-    # Create a job that is already finished so the SSE generator exits quickly.
+    # Create a fake job and ensure the events stream yields messages until done.
     jid = "test-job"
-    _JOBS[jid] = Job(id=jid, kind="pack", status="done", created_ts=0.0, result={"ok": True})
+    peridot_gui._JOBS[jid] = peridot_gui.Job(
+        id=jid,
+        kind="pack",
+        status="done",
+        created_ts=time.time(),
+        started_ts=time.time(),
+        finished_ts=time.time(),
+        result={"output": "x.peridot"},
+    )
 
-    r = c.get(f"/api/jobs/{jid}/events")
-    assert r.status_code == 200
-    ct = r.headers.get("content-type") or ""
-    assert "text/event-stream" in ct
-    assert r.content
+    with client.stream("GET", f"/api/jobs/{jid}/events") as r:
+        assert r.status_code == 200
+        assert "text/event-stream" in (r.headers.get("content-type") or "")
 
-    _JOBS.pop(jid, None)
+        # Read a few lines; there should be at least one `data:` message.
+        buf = ""
+        for line in r.iter_text():
+            buf += line
+            if "data:" in buf:
+                break
+
+        assert "data:" in buf
+
+    # Clean up so this test doesn't leak state across tests.
+    peridot_gui._JOBS.pop(jid, None)
