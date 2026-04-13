@@ -1,4 +1,7 @@
+import json
 import os
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -8,71 +11,111 @@ fastapi = pytest.importorskip("fastapi")
 pytest.importorskip("starlette")
 
 
-def _mk_app():
+def _client(monkeypatch):
+    # Force the GUI to invoke the repo's Peridot via the current interpreter.
+    # This is cross-platform and avoids relying on `peridot` being on PATH.
+    monkeypatch.setenv("PERIDOT_EXE", f"{sys.executable} -m peridot")
+
     from peridot_gui import create_app
-
-    return create_app()
-
-
-def test_gui_meta_smoke():
     from fastapi.testclient import TestClient
 
-    app = _mk_app()
-    client = TestClient(app)
-    r = client.get("/api/meta")
-    assert r.status_code == 200
-    j = r.json()
-
-    assert "runtime" in j
-    assert "presets" in j
-    assert "gui" in j
+    app = create_app()
+    return TestClient(app)
 
 
-def test_pack_scan_paths_smoke(tmp_path: Path):
-    from fastapi.testclient import TestClient
+def test_meta_doctor_settings(monkeypatch):
+    c = _client(monkeypatch)
 
-    # Create a real file so collect_files() has something.
-    d = tmp_path / "d"
-    d.mkdir()
-    (d / "a.txt").write_text("hello", encoding="utf-8")
+    meta = c.get("/api/meta")
+    assert meta.status_code == 200
+    j = meta.json()
+    assert "peridot_cmd" in j
 
-    app = _mk_app()
-    client = TestClient(app)
+    doctor = c.get("/api/doctor")
+    assert doctor.status_code == 200
+    # `peridot doctor --json` returns a JSON list of checks.
+    assert isinstance(doctor.json(), list)
 
-    r = client.post(
+    settings = c.get("/api/settings")
+    assert settings.status_code == 200
+    sj = settings.json()
+    assert "settings" in sj
+
+
+def test_pack_scan_and_pack_job(monkeypatch, tmp_path: Path):
+    c = _client(monkeypatch)
+
+    # Create a small directory to pack.
+    root = tmp_path / "src"
+    root.mkdir()
+    (root / "a.txt").write_text("hello", encoding="utf-8")
+
+    scan = c.post(
         "/api/pack/scan",
-        json={"paths": [str(d)], "excludes": []},
+        json={"paths": [str(root)], "excludes": []},
     )
-    assert r.status_code == 200, r.text
-    j = r.json()
+    assert scan.status_code == 200
+    sj = scan.json()
+    assert sj["files"] >= 1
+    assert isinstance(sj.get("sensitive"), list)
 
-    assert j["files"] >= 1
-    assert j["bytes"] >= 1
-    assert "missing_paths" in j
-
-
-def test_sse_headers_smoke(monkeypatch):
-    from fastapi.testclient import TestClient
-
-    # Seed a fake job so the SSE route exists.
-    import peridot_gui
-
-    peridot_gui._JOBS.clear()
-    peridot_gui._JOBS["jid"] = peridot_gui.Job(
-        id="jid",
-        kind="pack",
-        status="done",
-        created_ts=0.0,
-        started_ts=0.0,
-        finished_ts=0.0,
-        result={"ok": True},
+    out = tmp_path / "out.peridot"
+    r = c.post(
+        "/api/pack",
+        json={"name": "bundle", "paths": [str(root)], "excludes": [], "output": str(out)},
     )
+    assert r.status_code == 200
+    job_id = r.json()["job_id"]
 
-    app = _mk_app()
-    client = TestClient(app)
+    # Poll until done (job runs in a background thread).
+    deadline = time.time() + 25
+    last = None
+    while time.time() < deadline:
+        st = c.get(f"/api/jobs/{job_id}")
+        assert st.status_code == 200
+        last = st.json()
+        if last["status"] in {"done", "error"}:
+            break
+        time.sleep(0.2)
 
-    with client.stream("GET", "/api/jobs/jid/events") as r:
-        assert r.status_code == 200
-        # Don't force-consume the stream; just validate key headers.
-        assert r.headers.get("content-type", "").startswith("text/event-stream")
-        assert "no-cache" in (r.headers.get("cache-control", ""))
+    assert last is not None
+    assert last["status"] == "done", f"job failed: {last}"
+    assert last.get("result")
+    assert Path(last["result"]["output"]).exists()
+
+
+def test_sse_stream_starts(monkeypatch, tmp_path: Path):
+    c = _client(monkeypatch)
+
+    root = tmp_path / "src"
+    root.mkdir()
+    (root / "a.txt").write_text("hello", encoding="utf-8")
+
+    out = tmp_path / "out.peridot"
+    r = c.post(
+        "/api/pack",
+        json={"name": "bundle", "paths": [str(root)], "excludes": [], "output": str(out)},
+    )
+    job_id = r.json()["job_id"]
+
+    # Starlette's TestClient supports streaming responses.
+    with c.stream("GET", f"/api/jobs/{job_id}/events") as resp:
+        assert resp.status_code == 200
+        ct = resp.headers.get("content-type") or ""
+        assert ct.startswith("text/event-stream")
+
+        # Ensure at least one data: line arrives.
+        buf = b""
+        for chunk in resp.iter_raw():
+            buf += chunk
+            if b"data:" in buf:
+                break
+        assert b"data:" in buf
+
+        # Parse one message payload best-effort.
+        # (The stream may end quickly if the job finishes.)
+        text = buf.decode("utf-8", errors="replace")
+        lines = [ln for ln in text.splitlines() if ln.startswith("data: ")]
+        if lines:
+            payload = json.loads(lines[-1].removeprefix("data: "))
+            assert payload.get("id") == job_id
