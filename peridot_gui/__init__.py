@@ -220,6 +220,17 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
             except Exception:
                 pass
 
+        # UX: when packing, show bundle size without the UI needing to stat paths.
+        # Windows-first: always use pathlib for robust path handling.
+        try:
+            out_path = final_result.get("output") if isinstance(final_result, dict) else None
+            if out_path:
+                p_out = Path(str(out_path))
+                if p_out.exists() and p_out.is_file():
+                    final_result.setdefault("output_bytes", p_out.stat().st_size)
+        except Exception:
+            pass
+
         job.result = final_result
         job.status = "done"
     except Exception as exc:  # noqa: BLE001
