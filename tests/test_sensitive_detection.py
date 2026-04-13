@@ -24,6 +24,7 @@ def test_detect_sensitive_entries_flags_common_secret_files() -> None:
         _entry("work", ".ssh\\config.d\\work"),
         _entry("config", ".aws/config"),
         _entry("credentials", ".aws/credentials"),
+        _entry("config", ".kube/config"),
         _entry(".git-credentials", ".git-credentials"),
         _entry("config.json", ".docker/config.json"),
         _entry("pubring.kbx", ".gnupg/pubring.kbx"),

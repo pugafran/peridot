@@ -2253,6 +2253,8 @@ def _is_sensitive_path(name: str, path_str: str) -> bool:
         or path_norm == ".ssh/config"
         or path_norm.endswith("/.aws/config")
         or path_norm == ".aws/config"
+        or path_norm.endswith("/.kube/config")
+        or path_norm == ".kube/config"
     ):
         return True
 
