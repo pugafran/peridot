@@ -766,7 +766,8 @@ def create_app():
             "X-Accel-Buffering": "no",
             "X-Content-Type-Options": "nosniff",
         }
-        return StreamingResponse(gen(), media_type="text/event-stream", headers=headers)
+        # Include charset for consistent decoding on Windows browsers.
+        return StreamingResponse(gen(), media_type="text/event-stream; charset=utf-8", headers=headers)
 
     return app
 

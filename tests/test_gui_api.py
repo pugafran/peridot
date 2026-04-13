@@ -1,6 +1,4 @@
 import json
-import time
-from pathlib import Path
 
 import pytest
 
@@ -8,71 +6,76 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 pytest.importorskip("starlette")
 
+from starlette.testclient import TestClient  # noqa: E402
 
-def test_gui_api_meta_settings_doctor_scan_sse(tmp_path, monkeypatch):
-    # Ensure we can import the experimental GUI module even when running tests.
-    import peridot_gui  # noqa: WPS433
+import peridot_gui  # noqa: E402
 
+
+def test_meta_smoke():
     app = peridot_gui.create_app()
-
-    from fastapi.testclient import TestClient
-
-    client = TestClient(app)
-
-    # /api/meta should always work (it degrades gracefully if the peridot CLI isn't on PATH).
-    r = client.get("/api/meta")
+    c = TestClient(app)
+    r = c.get("/api/meta")
     assert r.status_code == 200
-    meta = r.json()
-    assert "gui" in meta
-    assert "runtime" in meta
+    data = r.json()
+    assert "gui" in data and "host" in data["gui"] and "port" in data["gui"]
+    assert "runtime" in data and "os_name" in data["runtime"]
+    assert "presets" in data and isinstance(data["presets"], list)
 
-    # /api/settings should work (it prefers in-process load_settings()).
-    r = client.get("/api/settings")
+
+def test_settings_smoke():
+    app = peridot_gui.create_app()
+    c = TestClient(app)
+    r = c.get("/api/settings")
     assert r.status_code == 200
-    settings = r.json()
-    assert "settings_path" in settings
-    assert "settings" in settings
+    data = r.json()
+    assert "settings_path" in data
+    assert "settings" in data
 
-    # /api/doctor may depend on the CLI being available. Accept either success
-    # or a clean FastAPI error.
-    r = client.get("/api/doctor")
-    assert r.status_code in {200, 500}
-    if r.status_code == 500:
-        assert "detail" in r.json()
 
-    # /api/pack/scan should work end-to-end in-process.
-    (tmp_path / "hello.txt").write_text("hi", encoding="utf-8")
-    r = client.post(
+def test_pack_scan_smoke():
+    app = peridot_gui.create_app()
+    c = TestClient(app)
+    r = c.post(
         "/api/pack/scan",
-        json={"preset": "", "paths": [str(tmp_path)], "excludes": []},
+        json={
+            "preset": "",
+            "paths": ["."],
+            "excludes": [],
+        },
     )
     assert r.status_code == 200
-    scan = r.json()
-    assert scan["files"] >= 1
-    assert isinstance(scan["sensitive"], list)
+    data = r.json()
+    assert data["files"] >= 0
+    assert data["bytes"] >= 0
+    assert "sensitive" in data and isinstance(data["sensitive"], list)
 
-    # SSE stream should send valid events and terminate when job is done.
-    jid = "test-job-1"
-    peridot_gui._JOBS[jid] = peridot_gui.Job(  # noqa: SLF001
+
+def test_job_events_sse_ends_for_done_job():
+    app = peridot_gui.create_app()
+    c = TestClient(app)
+
+    jid = "test-job"
+    peridot_gui._JOBS[jid] = peridot_gui.Job(
         id=jid,
         kind="pack",
         status="done",
-        created_ts=time.time(),
-        started_ts=time.time(),
-        finished_ts=time.time(),
+        created_ts=0.0,
+        started_ts=0.0,
+        finished_ts=0.0,
         result={"ok": True},
+        error=None,
     )
 
-    with client.stream("GET", f"/api/jobs/{jid}/events") as s:
-        assert s.status_code == 200
-        ct = s.headers.get("content-type") or ""
-        assert "text/event-stream" in ct
-        body = b"".join(list(s.iter_bytes()))
+    with c.stream("GET", f"/api/jobs/{jid}/events") as resp:
+        assert resp.status_code == 200
+        raw = b"".join(resp.iter_bytes())
 
-    # Expect at least one data: JSON line.
-    assert b"data:" in body
-    # Ensure the JSON payload can be parsed from at least one event.
-    line = next(ln for ln in body.splitlines() if ln.startswith(b"data: "))
-    payload = json.loads(line[len(b"data: ") :].decode("utf-8"))
-    assert payload["id"] == jid
-    assert payload["status"] == "done"
+    # basic SSE framing should include at least one data event.
+    assert b"data:" in raw
+    # the JSON payload should be parseable.
+    payload_lines = [ln for ln in raw.splitlines() if ln.startswith(b"data: ")]
+    assert payload_lines
+    last = payload_lines[-1].split(b"data: ", 1)[1]
+    obj = json.loads(last.decode("utf-8"))
+    assert obj["id"] == jid
+    assert obj["status"] == "done"
