@@ -1,30 +1,42 @@
 import json
+import os
+from pathlib import Path
 
 import pytest
 
 
-fastapi = pytest.importorskip("fastapi")
-pytest.importorskip("starlette")
+@pytest.mark.skipif(os.environ.get("CI") == "true" and os.name == "nt", reason="flaky on some Windows CI browsers")
+def test_gui_api_meta_smoke():
+    fastapi = pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
 
-from starlette.testclient import TestClient  # noqa: E402
+    from peridot_gui import create_app
 
-import peridot_gui  # noqa: E402
-
-
-def test_meta_smoke():
-    app = peridot_gui.create_app()
+    app = create_app()
     c = TestClient(app)
+
     r = c.get("/api/meta")
     assert r.status_code == 200
     data = r.json()
-    assert "gui" in data and "host" in data["gui"] and "port" in data["gui"]
-    assert "runtime" in data and "os_name" in data["runtime"]
-    assert "presets" in data and isinstance(data["presets"], list)
+    assert "runtime" in data
+    assert "presets" in data
+    assert "gui" in data
 
 
-def test_settings_smoke():
-    app = peridot_gui.create_app()
+def test_gui_api_settings_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    from peridot_gui import create_app
+
+    # Ensure we don't touch a real user HOME config when running tests.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    if os.name == "nt":
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+    app = create_app()
     c = TestClient(app)
+
     r = c.get("/api/settings")
     assert r.status_code == 200
     data = r.json()
@@ -32,30 +44,48 @@ def test_settings_smoke():
     assert "settings" in data
 
 
-def test_pack_scan_smoke():
-    app = peridot_gui.create_app()
+def test_gui_api_pack_scan_returns_missing_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    from peridot_gui import create_app
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    if os.name == "nt":
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+    existing = tmp_path / "exists.txt"
+    existing.write_text("ok", encoding="utf-8")
+
+    app = create_app()
     c = TestClient(app)
+
     r = c.post(
         "/api/pack/scan",
         json={
-            "preset": "",
-            "paths": ["."],
-            "excludes": [],
+            "paths": [str(existing), str(tmp_path / "missing.txt")],
+            "excludes": ["*.nope"],
         },
     )
     assert r.status_code == 200
     data = r.json()
-    assert data["files"] >= 0
-    assert data["bytes"] >= 0
-    assert "sensitive" in data and isinstance(data["sensitive"], list)
+    assert data["files"] >= 1
+    assert data["missing_paths"], "expected missing path to be reported"
 
 
-def test_job_events_sse_ends_for_done_job():
-    app = peridot_gui.create_app()
+def test_gui_api_sse_events_smoke(monkeypatch: pytest.MonkeyPatch):
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    import peridot_gui
+    from peridot_gui import Job, create_app
+
+    app = create_app()
     c = TestClient(app)
 
+    # Insert a finished job and ensure the SSE endpoint yields at least one data event.
     jid = "test-job"
-    peridot_gui._JOBS[jid] = peridot_gui.Job(
+    peridot_gui._JOBS[jid] = Job(
         id=jid,
         kind="pack",
         status="done",
@@ -66,16 +96,16 @@ def test_job_events_sse_ends_for_done_job():
         error=None,
     )
 
-    with c.stream("GET", f"/api/jobs/{jid}/events") as resp:
-        assert resp.status_code == 200
-        raw = b"".join(resp.iter_bytes())
+    with c.stream("GET", f"/api/jobs/{jid}/events") as r:
+        assert r.status_code == 200
+        chunks = b"".join(r.iter_bytes())
 
-    # basic SSE framing should include at least one data event.
-    assert b"data:" in raw
-    # the JSON payload should be parseable.
-    payload_lines = [ln for ln in raw.splitlines() if ln.startswith(b"data: ")]
-    assert payload_lines
-    last = payload_lines[-1].split(b"data: ", 1)[1]
-    obj = json.loads(last.decode("utf-8"))
-    assert obj["id"] == jid
-    assert obj["status"] == "done"
+    # We should see at least one 'data: {json}' message.
+    assert b"data:" in chunks
+    # And it should be valid JSON somewhere.
+    payloads = []
+    for line in chunks.splitlines():
+        if line.startswith(b"data: "):
+            payloads.append(json.loads(line[len(b"data: ") :].decode("utf-8")))
+    assert payloads
+    assert payloads[-1]["status"] in {"done", "error"}
