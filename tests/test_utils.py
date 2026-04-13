@@ -171,6 +171,17 @@ def test_install_hint_prefers_repo_virtualenv_python(tmp_path, monkeypatch):
     assert ".venv/bin/python" in hint.replace("\\", "/")
 
 
+def test_install_hint_uses_python3_when_only_python3_exists(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    venv_python = tmp_path / ".venv" / "bin" / "python3"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.write_text("#!/bin/sh\n")
+
+    hint = peridot.install_hint(".")
+    normalized = hint.replace("\\", "/")
+    assert ".venv/bin/python3" in normalized
+
+
 def test_install_hint_finds_virtualenv_next_to_module_file(tmp_path, monkeypatch):
     # Simulate running Peridot from a source checkout but with a different CWD.
     repo_root = tmp_path / "repo"

@@ -667,6 +667,7 @@ def install_hint(target: str) -> str:
     if venv_dir is not None:
         candidates = [
             venv_dir / "bin" / "python",
+            venv_dir / "bin" / "python3",
             venv_dir / "Scripts" / "python.exe",
             venv_dir / "Scripts" / "python",
         ]
