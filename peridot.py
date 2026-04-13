@@ -3972,12 +3972,40 @@ def cmd_share(args) -> None:
 
 def cmd_history(args) -> None:
     history_root = DEFAULT_HISTORY_DIR / args.bundle
+
+    snapshots: list[dict[str, object]] = []
+    if history_root.exists():
+        for snapshot in sorted(history_root.glob("*.peridot")):
+            stat = snapshot.stat()
+            snapshots.append(
+                {
+                    "name": snapshot.name,
+                    "path": str(snapshot),
+                    "size_bytes": stat.st_size,
+                    "modified_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+                }
+            )
+
+    if getattr(args, "json", False):
+        print(
+            json.dumps(
+                {
+                    "bundle": args.bundle,
+                    "history_root": str(history_root),
+                    "snapshots": snapshots,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return
+
     table = Table(title=tr("History"), header_style="bold cyan")
     table.add_column("Snapshot")
     table.add_column("Size", justify="right")
-    if history_root.exists():
-        for snapshot in sorted(history_root.glob("*.peridot")):
-            table.add_row(snapshot.name, format_bytes(snapshot.stat().st_size))
+    if snapshots:
+        for entry in snapshots:
+            table.add_row(str(entry["name"]), format_bytes(int(entry["size_bytes"])))
     else:
         table.add_row("No snapshots", "-")
     console.print(table)
@@ -4468,6 +4496,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     history_parser = subparsers.add_parser("history", help="Lista snapshots historicos de un bundle")
     history_parser.add_argument("bundle", help="Nombre base del bundle sin extension")
+    history_parser.add_argument("--json", action="store_true", help="Salida estructurada en JSON")
     history_parser.set_defaults(func=cmd_history)
 
     manifest_parser = subparsers.add_parser("manifest", help="Imprime el manifest de un paquete")
