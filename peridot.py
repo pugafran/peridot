@@ -668,7 +668,13 @@ def install_hint(target: str) -> str:
         ]
         for venv_python in candidates:
             if venv_python.exists():
-                return f"{venv_python} -m pip install {target_str}"
+                python_str = str(venv_python)
+                if any(ch.isspace() for ch in python_str):
+                    if normalize_os_name() == "windows":
+                        python_str = f'"{python_str}"'
+                    else:
+                        python_str = shlex.quote(python_str)
+                return f"{python_str} -m pip install {target_str}"
 
     # Fall back to the current interpreter so the suggestion matches the
     # environment Peridot is running in.

@@ -171,6 +171,44 @@ def test_install_hint_finds_virtualenv_next_to_module_file(tmp_path, monkeypatch
     normalized = hint.replace("\\", "/")
     assert "/repo/.venv/bin/python" in normalized
 
+
+def test_install_hint_quotes_virtualenv_python_when_path_contains_spaces(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo with space"
+    repo_root.mkdir()
+    module_path = repo_root / "peridot.py"
+    module_path.write_text("# dummy\n")
+
+    venv_python = repo_root / ".venv" / "bin" / "python"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.write_text("#!/bin/sh\n")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(peridot, "__file__", str(module_path))
+    monkeypatch.setattr(peridot.platform, "system", lambda: "Linux")
+
+    hint = peridot.install_hint(".")
+    assert "repo with space" in hint
+    assert "'" in hint
+
+
+def test_install_hint_quotes_windows_virtualenv_python_with_double_quotes(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo with space"
+    repo_root.mkdir()
+    module_path = repo_root / "peridot.py"
+    module_path.write_text("# dummy\n")
+
+    venv_python = repo_root / ".venv" / "Scripts" / "python.exe"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.write_text("MZ")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(peridot, "__file__", str(module_path))
+    monkeypatch.setattr(peridot.platform, "system", lambda: "Windows")
+
+    hint = peridot.install_hint(".")
+    assert "repo with space" in hint
+    assert '"' in hint
+
 #
 
 
