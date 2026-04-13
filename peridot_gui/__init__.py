@@ -51,6 +51,38 @@ class Job:
 
 
 _JOBS: dict[str, Job] = {}
+_JOBS_LOCK = threading.Lock()
+
+
+def _prune_jobs(*, keep: int = 50, min_age_seconds: float = 3600.0) -> None:
+    """Best-effort pruning of completed jobs.
+
+    The experimental GUI is designed to be left open while iterating. Without
+    pruning, a long session can accumulate lots of finished jobs in memory.
+
+    We keep this logic intentionally simple (Windows-first, no background
+    schedulers): prune opportunistically when jobs finish.
+    """
+
+    try:
+        now = time.time()
+        with _JOBS_LOCK:
+            items = list(_JOBS.values())
+            # Keep running/queued jobs regardless of age.
+            done = [j for j in items if j.status in {"done", "error"} and (j.finished_ts or 0) > 0]
+            done.sort(key=lambda j: (j.finished_ts or 0))
+
+            # Only prune if we have more than `keep` completed jobs.
+            extra = max(0, len(done) - keep)
+            if extra <= 0:
+                return
+
+            # Prune oldest completed jobs, but only if they are old enough.
+            prunable = [j for j in done[:extra] if (now - float(j.finished_ts or now)) >= min_age_seconds]
+            for j in prunable:
+                _JOBS.pop(j.id, None)
+    except Exception:
+        return
 
 
 def _peridot_cmd_prefix() -> list[str]:
@@ -248,6 +280,8 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
         job.error = str(exc)
     finally:
         job.finished_ts = time.time()
+        # Opportunistic cleanup to keep long-running GUI sessions stable.
+        _prune_jobs()
         if progress_path:
             try:
                 Path(progress_path).unlink(missing_ok=True)
@@ -660,7 +694,8 @@ def create_app():
 
         jid = str(uuid.uuid4())
         job = Job(id=jid, kind="apply", status="queued", created_ts=time.time())
-        _JOBS[jid] = job
+        with _JOBS_LOCK:
+            _JOBS[jid] = job
         t = threading.Thread(target=_launch_job, args=(job, args), daemon=True)
         t.start()
         return {"job_id": jid}
@@ -731,14 +766,16 @@ def create_app():
 
         jid = str(uuid.uuid4())
         job = Job(id=jid, kind="pack", status="queued", created_ts=time.time())
-        _JOBS[jid] = job
+        with _JOBS_LOCK:
+            _JOBS[jid] = job
         t = threading.Thread(target=_launch_job, args=(job, args), daemon=True)
         t.start()
         return {"job_id": jid}
 
     @app.get("/api/jobs/{job_id}")
     def job_status(job_id: str) -> dict[str, Any]:
-        job = _JOBS.get(job_id)
+        with _JOBS_LOCK:
+            job = _JOBS.get(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="job not found")
         return {
@@ -767,7 +804,8 @@ def create_app():
         running longer than needed.
         """
 
-        job = _JOBS.get(job_id)
+        with _JOBS_LOCK:
+            job = _JOBS.get(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="job not found")
 
@@ -786,7 +824,8 @@ def create_app():
                     # best-effort: if we can't detect disconnect, keep streaming
                     pass
 
-                j = _JOBS.get(job_id)
+                with _JOBS_LOCK:
+                    j = _JOBS.get(job_id)
                 if not j:
                     yield b"event: done\ndata: {}\n\n"
                     return
