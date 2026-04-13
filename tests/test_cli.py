@@ -15,6 +15,21 @@ def test_version_flag_prints_and_exits(capsys):
     assert peridot.APP_VERSION in out
 
 
+def test_version_command_json(capsys):
+    parser = peridot.build_parser()
+    args = parser.parse_args(["version", "--json"])
+
+    args.func(args)
+
+    raw = capsys.readouterr().out
+    payload = peridot.json.loads(raw)
+
+    assert payload["app"] == "peridot"
+    assert payload["version"] == peridot.APP_VERSION
+    assert isinstance(payload["python_version"], str)
+    assert isinstance(payload["rich_available"], bool)
+
+
 def test_doctor_json_includes_zstd_check(capsys):
     parser = peridot.build_parser()
     args = parser.parse_args(["doctor", "--json"])

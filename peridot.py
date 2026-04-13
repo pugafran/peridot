@@ -3947,6 +3947,34 @@ def cmd_doctor(args) -> None:
     console.print(table)
 
 
+def cmd_version(args) -> None:
+    payload = {
+        "app": "peridot",
+        "version": APP_VERSION,
+        "python_executable": str(getattr(sys, "executable", "") or ""),
+        "python_version": platform.python_version(),
+        "rich_available": bool(RICH_AVAILABLE),
+        "cryptography_available": AESGCM is not None,
+        "zstd_available": zstd is not None,
+        "os": normalize_os_name(),
+        "platform": platform.platform(),
+    }
+
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+
+    print(f"peridot {APP_VERSION}")
+    if payload["python_executable"]:
+        print(f"Python: {payload['python_executable']} ({payload['python_version']})")
+    else:
+        print(f"Python: {payload['python_version']}")
+    print(f"Rich: {'yes' if payload['rich_available'] else 'no'}")
+    print(f"Cryptography: {'yes' if payload['cryptography_available'] else 'no'}")
+    print(f"zstandard: {'yes' if payload['zstd_available'] else 'no'}")
+    print(f"OS: {payload['os']}")
+
+
 def cmd_share(args) -> None:
     manifest = manifest_from_zip(args.package)
     bundle = manifest["bundle"]
@@ -4470,6 +4498,10 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser = subparsers.add_parser("doctor", help="Diagnostico del entorno local")
     doctor_parser.add_argument("--json", action="store_true", help="Salida estructurada en JSON")
     doctor_parser.set_defaults(func=cmd_doctor)
+
+    version_parser = subparsers.add_parser("version", help="Muestra informacion de version y runtime")
+    version_parser.add_argument("--json", action="store_true", help="Salida estructurada en JSON")
+    version_parser.set_defaults(func=cmd_version)
 
     update_parser = subparsers.add_parser("self-update", help="Actualiza peridot-cli usando pip")
     update_parser.add_argument("-y", "--yes", action="store_true", help="No pedir confirmacion")
