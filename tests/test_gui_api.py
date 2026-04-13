@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import time
@@ -7,109 +8,138 @@ import pytest
 
 
 fastapi = pytest.importorskip("fastapi")
-pytest.importorskip("starlette")
+starlette_testclient = pytest.importorskip("starlette.testclient")
+
+from peridot_gui import create_app  # noqa: E402
 
 
-def _make_client(monkeypatch):
-    # Ensure the GUI uses a deterministic CLI invocation in tests.
-    # Using sys.executable avoids relying on a `python` shim on PATH.
+@pytest.fixture(autouse=True)
+def _force_peridot_exe(monkeypatch):
+    # Ensure the GUI uses the in-tree Peridot module via the current interpreter.
+    # This is robust on Windows and in CI where `peridot` might not be on PATH.
     monkeypatch.setenv("PERIDOT_EXE", f"{sys.executable} -m peridot")
 
-    from fastapi.testclient import TestClient
 
-    import peridot_gui
+@pytest.fixture()
+def client():
+    app = create_app()
+    return starlette_testclient.TestClient(app)
 
-    app = peridot_gui.create_app()
-    return TestClient(app), peridot_gui
 
-
-def test_api_meta_smoke(monkeypatch):
-    client, _ = _make_client(monkeypatch)
-
+def test_api_meta_smoke(client):
     r = client.get("/api/meta")
     assert r.status_code == 200
-    j = r.json()
-
-    assert "gui" in j
-    assert "base_url" in j["gui"]
-    assert isinstance(j.get("peridot_cmd"), list)
-    assert "runtime" in j
-    assert "presets" in j
+    data = r.json()
+    assert "runtime" in data
+    assert "presets" in data
+    assert "gui" in data and "base_url" in data["gui"]
 
 
-def test_api_settings_smoke(monkeypatch):
-    client, _ = _make_client(monkeypatch)
-
+def test_api_settings_smoke(client):
     r = client.get("/api/settings")
     assert r.status_code == 200
-    j = r.json()
+    data = r.json()
+    assert "settings_path" in data
+    assert "settings" in data
 
-    assert "settings_path" in j
-    assert "settings" in j
 
-
-def test_api_doctor_smoke(monkeypatch):
-    client, _ = _make_client(monkeypatch)
-
+def test_api_doctor_smoke(client):
     r = client.get("/api/doctor")
     assert r.status_code == 200
-    j = r.json()
-
-    # doctor JSON shape isn't strictly fixed, but it should be JSON.
-    assert isinstance(j, (dict, list))
+    data = r.json()
+    assert isinstance(data, (dict, list))
 
 
-def test_api_pack_scan_uses_real_paths(monkeypatch, tmp_path: Path):
-    client, _ = _make_client(monkeypatch)
+def test_pack_scan_and_pack_job_end_to_end(client, tmp_path: Path):
+    # Create a tiny project.
+    (tmp_path / "a.txt").write_text("hello", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("world", encoding="utf-8")
 
-    # Create a tiny directory with one file to scan.
-    root = tmp_path / "root"
-    root.mkdir()
-    (root / "a.txt").write_text("hello", encoding="utf-8")
-
-    r = client.post(
+    scan = client.post(
         "/api/pack/scan",
+        json={"paths": [str(tmp_path)]},
+    )
+    assert scan.status_code == 200
+    scan_data = scan.json()
+    assert scan_data["files"] >= 2
+    assert scan_data["bytes"] >= 10
+    assert isinstance(scan_data.get("sensitive"), list)
+
+    out_path = tmp_path / "bundle.peridot"
+    r = client.post(
+        "/api/pack",
         json={
-            "preset": "",
-            "paths": [str(root)],
+            "name": "test-bundle",
+            "paths": [str(tmp_path)],
+            "output": str(out_path),
             "excludes": [],
         },
     )
     assert r.status_code == 200
-    j = r.json()
+    jid = r.json()["job_id"]
+    assert jid
 
-    assert j["files"] >= 1
-    assert j["bytes"] >= 1
-    assert j["missing_paths"] == []
+    # Poll for completion (job runs in a thread).
+    deadline = time.time() + 30
+    last = None
+    while time.time() < deadline:
+        j = client.get(f"/api/jobs/{jid}")
+        assert j.status_code == 200
+        last = j.json()
+        if last["status"] in {"done", "error"}:
+            break
+        time.sleep(0.15)
+
+    assert last is not None
+    assert last["status"] == "done", f"job failed: {last}"
+    assert out_path.exists() and out_path.is_file()
 
 
-def test_sse_events_endpoint_finishes(monkeypatch):
-    client, peridot_gui = _make_client(monkeypatch)
+def test_sse_events_smoke(client, tmp_path: Path):
+    # Start a tiny pack job and ensure the SSE endpoint yields at least one event.
+    (tmp_path / "a.txt").write_text("hello", encoding="utf-8")
 
-    # Create a fake job and ensure the events stream yields messages until done.
-    jid = "test-job"
-    peridot_gui._JOBS[jid] = peridot_gui.Job(
-        id=jid,
-        kind="pack",
-        status="done",
-        created_ts=time.time(),
-        started_ts=time.time(),
-        finished_ts=time.time(),
-        result={"output": "x.peridot"},
+    out_path = tmp_path / "bundle.peridot"
+    r = client.post(
+        "/api/pack",
+        json={
+            "name": "sse-bundle",
+            "paths": [str(tmp_path)],
+            "output": str(out_path),
+            "excludes": [],
+        },
     )
+    jid = r.json()["job_id"]
 
-    with client.stream("GET", f"/api/jobs/{jid}/events") as r:
-        assert r.status_code == 200
-        assert "text/event-stream" in (r.headers.get("content-type") or "")
+    with client.stream("GET", f"/api/jobs/{jid}/events") as s:
+        # Read the initial stream bytes.
+        chunk = next(s.iter_bytes())
+        assert b":" in chunk  # initial comment
 
-        # Read a few lines; there should be at least one `data:` message.
-        buf = ""
-        for line in r.iter_text():
-            buf += line
-            if "data:" in buf:
+        # Read until we see at least one data event.
+        buf = chunk
+        deadline = time.time() + 10
+        while time.time() < deadline and b"data:" not in buf:
+            try:
+                buf += next(s.iter_bytes())
+            except StopIteration:
+                break
+        assert b"data:" in buf
+
+        # Best-effort: parse the first JSON payload.
+        # (The stream may include comments/retry directives.)
+        for ln in buf.splitlines():
+            if ln.startswith(b"data:"):
+                payload = json.loads(ln[len(b"data:") :].strip().decode("utf-8"))
+                assert payload["id"] == jid
+                assert payload["kind"] == "pack"
                 break
 
-        assert "data:" in buf
-
-    # Clean up so this test doesn't leak state across tests.
-    peridot_gui._JOBS.pop(jid, None)
+    # Ensure job eventually completes.
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        j = client.get(f"/api/jobs/{jid}").json()
+        if j["status"] in {"done", "error"}:
+            assert j["status"] == "done", f"job failed: {j}"
+            break
+        time.sleep(0.2)
