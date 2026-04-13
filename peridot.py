@@ -538,7 +538,11 @@ def set_current_language(language: str) -> None:
 
 
 def detect_runtime_language() -> str:
-    env_language = os.environ.get("PERIDOT_LANG")
+    # Backwards-compatible env override.
+    #
+    # PERIDOT_LANG is the documented knob, but PERIDOT_LANGUAGE is a common
+    # expectation (used by other tools), so we accept it as an alias.
+    env_language = os.environ.get("PERIDOT_LANG") or os.environ.get("PERIDOT_LANGUAGE")
     if env_language:
         normalized = env_language.strip().lower()
         if normalized in {"auto", "system"}:

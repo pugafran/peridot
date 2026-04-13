@@ -563,3 +563,12 @@ def test_detect_runtime_language_supports_auto(monkeypatch):
     monkeypatch.delenv("LANGUAGE", raising=False)
 
     assert peridot.detect_runtime_language() == "es"
+
+
+def test_detect_runtime_language_accepts_peridot_language_alias(monkeypatch, tmp_path):
+    monkeypatch.delenv("PERIDOT_LANG", raising=False)
+    monkeypatch.setenv("PERIDOT_LANGUAGE", "en")
+    # Ensure we don't accidentally read a real user config.
+    monkeypatch.setattr(peridot, "DEFAULT_SETTINGS_STORE", tmp_path / "missing-settings.json")
+
+    assert peridot.detect_runtime_language() == "en"
