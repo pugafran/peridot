@@ -201,6 +201,7 @@ SENSITIVE_PATTERNS = (
     ".npmrc",
     ".netrc",
     ".pypirc",
+    ".gnupg",
 )
 
 DEFAULT_SETTINGS = {
@@ -2216,6 +2217,10 @@ def _is_sensitive_path(name: str, path_str: str) -> bool:
     if name == "config.json" and (
         path_norm.endswith("/.docker/config.json") or path_norm == ".docker/config.json"
     ):
+        return True
+
+    # GnuPG key material.
+    if path_norm == ".gnupg" or path_norm.startswith(".gnupg/") or "/.gnupg/" in path_norm:
         return True
 
     # OpenSSH supports including snippets from ~/.ssh/config.d/*
