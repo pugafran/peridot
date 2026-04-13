@@ -572,7 +572,8 @@ def create_app():
             t = target
             try:
                 if t.exists() and t.is_file():
-                    subprocess.Popen(["explorer.exe", "/select,", str(t)])
+                    # Explorer expects: explorer.exe /select,"C:\\path\\file"
+                    subprocess.Popen(["explorer.exe", f"/select,{str(t)}"])
                 else:
                     subprocess.Popen(["explorer.exe", str(t if t.is_dir() else t.parent)])
             except Exception:
