@@ -35,7 +35,8 @@ def test_slugify_truncates_long_inputs_safely():
 
 def test_format_bytes():
     assert peridot.format_bytes(0) == "0 B"
-    assert peridot.format_bytes(1024) == "1.0 KB"
+    assert peridot.format_bytes(1024) == "1 KB"
+    assert peridot.format_bytes(1536) == "1.5 KB"
 
 
 def test_install_hint_quotes_targets_with_spaces(monkeypatch):

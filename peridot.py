@@ -1084,7 +1084,13 @@ def format_bytes(size: int) -> str:
     value = float(size)
     for unit in units:
         if value < 1024 or unit == units[-1]:
-            return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
+            if unit == "B":
+                return f"{int(value)} B"
+            # Avoid noisy trailing decimals for exact unit boundaries.
+            rounded = round(value)
+            if abs(value - rounded) < 1e-9:
+                return f"{int(rounded)} {unit}"
+            return f"{value:.1f} {unit}"
         value /= 1024
     return f"{size} B"
 
