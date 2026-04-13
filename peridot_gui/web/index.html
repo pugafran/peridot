@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Peridot (Experimental GUI)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/web/style.css" />
+  </head>
+  <body class="bg-slate-950 text-slate-100 glow">
+    <div id="toasts" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
+
+    <div class="max-w-6xl mx-auto px-6 py-8">
+      <div class="flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-800 flex items-center justify-center">
+            <div class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_18px_rgba(16,185,129,.55)]"></div>
+          </div>
+          <div>
+            <h1 class="text-2xl font-semibold tracking-tight">Peridot</h1>
+            <p class="text-slate-400 text-sm">Experimental local GUI · <span class="text-slate-300">Ctrl/⌘K</span> for actions · version <span id="metaVersion" class="text-slate-200">?</span></p>
+          </div>
+        </div>
+        <div class="text-xs text-slate-500">Local app · <span id="metaAddr">127.0.0.1:8844</span></div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-5 mt-8">
+        <aside class="md:col-span-3">
+          <div class="rounded-2xl border border-slate-800 bg-slate-900/35 backdrop-blur p-3">
+            <div class="text-xs text-slate-400 px-2 py-1">Navigation</div>
+            <div class="mt-2 flex flex-col gap-1">
+              <button class="navbtn px-3 py-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-900/40 transition text-left" data-route="home">
+                <div class="text-sm" data-i18n="nav.dashboard">Dashboard</div>
+                <div class="text-xs text-slate-500">Recent + shortcuts</div>
+              </button>
+              <button class="navbtn px-3 py-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-900/40 transition text-left" data-route="pack">
+                <div class="text-sm" data-i18n="nav.pack">Pack</div>
+                <div class="text-xs text-slate-500">Wizard</div>
+              </button>
+              <button class="navbtn px-3 py-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-900/40 transition text-left" data-route="apply">
+                <div class="text-sm">Apply</div>
+                <div class="text-xs text-slate-500">Wizard</div>
+              </button>
+              <button class="navbtn px-3 py-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-900/40 transition text-left" data-route="inspect">
+                <div class="text-sm">Inspect</div>
+                <div class="text-xs text-slate-500">Manifest (JSON)</div>
+              </button>
+              <div class="h-px bg-slate-800 my-2"></div>
+              <button class="navbtn px-3 py-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-900/40 transition text-left" data-route="doctor">
+                <div class="text-sm">Doctor</div>
+                <div class="text-xs text-slate-500">Diagnostics</div>
+              </button>
+              <button class="navbtn px-3 py-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-900/40 transition text-left" data-route="settings">
+                <div class="text-sm">Settings</div>
+                <div class="text-xs text-slate-500">JSON</div>
+              </button>
+            </div>
+          </div>
+
+          <div class="rounded-2xl border border-slate-800 bg-slate-900/25 backdrop-blur p-4 mt-4">
+            <div class="text-xs text-slate-400">Tip</div>
+            <div class="text-sm text-slate-200 mt-1">Keep Peridot safe by default. Review “Sensitive paths” before creating a bundle.</div>
+          </div>
+        </aside>
+
+        <main class="md:col-span-9">
+          <div class="rounded-2xl border border-slate-800 bg-slate-900/30 backdrop-blur p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-xs text-slate-400" id="navTitle">Dashboard</div>
+                <div class="text-lg font-medium mt-1">Minimal, fast, keyboard-first.</div>
+              </div>
+              <button class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-sm" onclick="document.dispatchEvent(new KeyboardEvent('keydown',{key:'k',ctrlKey:true}))">Ctrl/⌘K</button>
+            </div>
+          </div>
+
+          <div id="view" class="mt-5">
+            <section id="route-home" class="fade-in">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button class="rounded-2xl border border-slate-800 bg-slate-900/30 hover:bg-slate-900/45 transition p-5 text-left" onclick="document.querySelector('[data-route=\"pack\"]').click();">
+                  <div class="text-sm text-slate-400">Create</div>
+                  <div class="text-lg font-medium mt-1">Pack a bundle</div>
+                  <div class="text-xs text-slate-500 mt-2">Guided wizard · safe defaults</div>
+                </button>
+                <button class="rounded-2xl border border-slate-800 bg-slate-900/30 hover:bg-slate-900/45 transition p-5 text-left" onclick="document.querySelector('[data-route=\"apply\"]').click();">
+                  <div class="text-sm text-slate-400">Restore</div>
+                  <div class="text-lg font-medium mt-1">Apply a bundle</div>
+                  <div class="text-xs text-slate-500 mt-2">Preview + confirm</div>
+                </button>
+                <button class="rounded-2xl border border-slate-800 bg-slate-900/30 hover:bg-slate-900/45 transition p-5 text-left" onclick="document.querySelector('[data-route=\"inspect\"]').click();">
+                  <div class="text-sm text-slate-400">Explore</div>
+                  <div class="text-lg font-medium mt-1">Inspect</div>
+                  <div class="text-xs text-slate-500 mt-2">Manifest + file list</div>
+                </button>
+              </div>
+
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 mt-4">
+                <div class="text-sm font-medium">Roadmap for this experimental GUI</div>
+                <ul class="text-sm text-slate-300 mt-2 space-y-1 list-disc list-inside">
+                  <li>Improve scan UX: show missing paths + better excludes editor</li>
+                  <li>Apply wizard: confirmations, platform warnings, better progress</li>
+                  <li>Bundle library: search, open/reveal, and quick inspect</li>
+                  <li>Tauri packaging (optional)</li>
+                </ul>
+              </div>
+            </section>
+
+            <section id="route-doctor" class="hidden fade-in">
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/25 p-5">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm font-medium">Doctor</div>
+                    <div class="text-xs text-slate-500">Calls <code class="text-slate-200">peridot doctor --json</code></div>
+                  </div>
+                  <button class="px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-800 text-emerald-200 text-sm" onclick="window.__refreshDoctor && window.__refreshDoctor()">Refresh</button>
+                </div>
+                <pre id="doctorOut" class="mt-4 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(not loaded)</pre>
+              </div>
+            </section>
+
+            <section id="route-settings" class="hidden fade-in">
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/25 p-5">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm font-medium">Settings</div>
+                    <div class="text-xs text-slate-500">Loads settings via Peridot config store (no CLI required)</div>
+                  </div>
+                  <button class="px-3 py-2 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-800 text-sky-200 text-sm" onclick="window.__refreshSettings && window.__refreshSettings()">Refresh</button>
+                </div>
+                <pre id="settingsOut" class="mt-4 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(not loaded)</pre>
+              </div>
+            </section>
+
+            <section id="route-pack" class="hidden fade-in">
+              <input id="packStep" type="hidden" value="1" />
+
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/25 p-6">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm font-medium">Pack wizard</div>
+                    <div class="text-xs text-slate-500">Make a bundle safely. Minimal decisions, good defaults.</div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button id="packPrev" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-sm">Back</button>
+                    <button id="packNext" class="px-3 py-2 rounded-xl border border-emerald-800 bg-emerald-500/15 hover:bg-emerald-500/25 transition text-sm text-emerald-200">Next</button>
+                  </div>
+                </div>
+
+                <div class="mt-5 flex items-center gap-2 text-xs text-slate-400">
+                  <div class="px-2 py-1 rounded-lg border border-slate-800 bg-slate-950/40">1 Preset</div>
+                  <div class="px-2 py-1 rounded-lg border border-slate-800 bg-slate-950/40">2 Details</div>
+                  <div class="px-2 py-1 rounded-lg border border-slate-800 bg-slate-950/40">3 Sensitive</div>
+                  <div class="px-2 py-1 rounded-lg border border-slate-800 bg-slate-950/40">4 Create</div>
+                </div>
+              </div>
+
+              <div class="pack-step mt-4" id="pack-step-1">
+                <div class="rounded-2xl border border-slate-800 bg-slate-900/20 p-6">
+                  <div class="text-sm font-medium">Choose a preset</div>
+                  <div class="text-xs text-slate-500 mt-1">Start from a curated set of dotfiles for your OS/shell.</div>
+                  <div id="presetGrid" class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4"></div>
+                </div>
+              </div>
+
+              <div class="pack-step hidden mt-4" id="pack-step-2">
+                <div class="rounded-2xl border border-slate-800 bg-slate-900/20 p-6">
+                  <div class="text-sm font-medium">Bundle details</div>
+                  <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+                    <div>
+                      <label class="block text-sm text-slate-300">Name</label>
+                      <input id="packName" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="my-bundle" />
+                    </div>
+                    <div class="md:col-span-2">
+                      <div class="flex items-center justify-between gap-2">
+                        <label class="block text-sm text-slate-300">Paths</label>
+                        <button id="btnUsePresetPaths" class="px-2 py-1 rounded-lg border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-[11px] text-slate-200" type="button">Use preset paths</button>
+                      </div>
+                      <textarea id="packPaths" rows="3" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="~/.config\n~/.gitconfig"></textarea>
+                      <div class="text-xs text-slate-500 mt-2">One per line (recommended). Also accepts <span class="text-slate-300">;</span> or <span class="text-slate-300">,</span> separators.</div>
+                    </div>
+                  </div>
+                  <div class="mt-4">
+                    <label class="block text-sm text-slate-300">Output (optional)</label>
+                    <input id="packOutput" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="my-bundle.peridot" />
+                  </div>
+                  <div class="mt-4">
+                    <label class="block text-sm text-slate-300">Exclude patterns (optional)</label>
+                    <textarea id="packExcludes" rows="2" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder=".ssh\n*.pem\nsecrets/*.json"></textarea>
+                    <div class="text-xs text-slate-500 mt-2">One per line (recommended). Used during scan and pack.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="pack-step hidden mt-4" id="pack-step-3">
+                <div class="rounded-2xl border border-slate-800 bg-slate-900/20 p-6">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <div class="text-sm font-medium">Sensitive paths</div>
+                      <div class="text-xs text-slate-500 mt-1">Peridot is safe by default. Toggle what to include.</div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button id="sensExcludeAll" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-xs">Exclude all</button>
+                      <button id="sensIncludeAll" class="px-3 py-2 rounded-xl border border-amber-800 bg-amber-500/10 hover:bg-amber-500/20 transition text-xs text-amber-200">Include all</button>
+                    </div>
+                  </div>
+                  <div id="scanSummary" class="mt-4 text-xs text-slate-400"></div>
+                  <div id="sensitiveList" class="mt-3 flex flex-col gap-2"></div>
+                </div>
+              </div>
+
+              <div class="pack-step hidden mt-4" id="pack-step-4">
+                <div class="rounded-2xl border border-slate-800 bg-slate-900/20 p-6">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <div class="text-sm font-medium">Create bundle</div>
+                      <div class="text-xs text-slate-500 mt-1">Runs <code class="text-slate-200">peridot pack --json --yes</code> and shows the result.</div>
+                    </div>
+                    <button id="packRunBtn" class="px-4 py-2 rounded-xl border border-purple-800 bg-purple-500/15 hover:bg-purple-500/25 transition text-sm text-purple-200">Create</button>
+                  </div>
+                  <div class="text-xs text-slate-400 mt-3" id="packRunStatus">idle</div>
+                  <div class="flex items-center gap-2 mt-3">
+                    <button id="btnPackReveal" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-xs" data-i18n="gui.reveal" disabled>Reveal</button>
+                    <button id="btnPackCopy" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-xs" data-i18n="gui.copyPath" disabled>Copy path</button>
+                  </div>
+                  <div class="mt-4 rounded-xl border border-slate-800 bg-slate-950/20 p-3">
+                    <div class="text-xs text-slate-400" id="packSummary">(no results yet)</div>
+                    <div class="mt-2 h-2 rounded-full bg-slate-800 overflow-hidden">
+                      <div id="packProgressBar" class="h-2 bg-emerald-600/60" style="width:0%"></div>
+                    </div>
+                  </div>
+
+                  <details class="mt-3">
+                    <summary class="cursor-pointer text-xs text-slate-400 hover:text-slate-200">Details (JSON)</summary>
+                    <pre id="packJob" class="mt-2 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(no job)</pre>
+                  </details>
+                </div>
+              </div>
+            </section>
+
+            <section id="route-inspect" class="hidden fade-in">
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/25 p-6">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm font-medium" data-i18n="nav.inspect">Inspect</div>
+                    <div class="text-xs text-slate-500 mt-1">Select a bundle and view its manifest (JSON).</div>
+                  </div>
+                  <button id="btnRefreshBundles" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-sm">Refresh</button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                  <div>
+                    <label class="block text-sm text-slate-300">Bundle path</label>
+                    <input id="inspectPath" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="C:\\path\\bundle.peridot" />
+                    <div class="text-xs text-slate-500 mt-2">Or pick from local bundles below.</div>
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Local bundles</label>
+                    <select id="bundleSelect" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2"></select>
+                    <div class="text-xs text-slate-500 mt-2">Includes history snapshots.</div>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2 mt-4">
+                  <button id="btnInspect" class="px-4 py-2 rounded-xl border border-sky-800 bg-sky-500/15 hover:bg-sky-500/25 transition text-sm text-sky-200">Inspect</button>
+                  <button id="btnInspectReveal" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-sm" data-i18n="gui.reveal" disabled>Reveal</button>
+                  <button id="btnInspectCopy" class="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/30 hover:bg-slate-950/50 transition text-sm" data-i18n="gui.copyPath" disabled>Copy path</button>
+                  <div id="inspectStatus" class="text-xs text-slate-400">idle</div>
+                </div>
+
+                <div class="mt-4 rounded-xl border border-slate-800 bg-slate-950/20 p-3">
+                  <div class="text-xs text-slate-400" id="inspectSummary">(no bundle)</div>
+                </div>
+
+                <details class="mt-3">
+                  <summary class="cursor-pointer text-xs text-slate-400 hover:text-slate-200">Details (JSON)</summary>
+                  <pre id="inspectOut" class="mt-2 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(no bundle)</pre>
+                </details>
+              </div>
+            </section>
+
+            <section id="route-apply" class="hidden fade-in">
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/25 p-6">
+                <div class="text-sm font-medium" data-i18n="nav.apply">Apply</div>
+                <div class="text-xs text-slate-500 mt-1">Plan (dry-run) first, then confirm apply token.</div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                  <div>
+                    <label class="block text-sm text-slate-300">Bundle path</label>
+                    <input id="applyPath" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="C:\\path\\bundle.peridot" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Target (optional)</label>
+                    <input id="applyTarget" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2" placeholder="C:\\Users\\you" />
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2 mt-4">
+                  <button id="btnApplyPlan" class="px-4 py-2 rounded-xl border border-amber-800 bg-amber-500/10 hover:bg-amber-500/20 transition text-sm text-amber-200">Plan</button>
+                  <button id="btnApplyRun" class="px-4 py-2 rounded-xl border border-emerald-800 bg-emerald-500/15 hover:bg-emerald-500/25 transition text-sm text-emerald-200" disabled>Apply</button>
+                  <div id="applyStatus" class="text-xs text-slate-400">idle</div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                  <div>
+                    <label class="block text-sm text-slate-300">Apply token (from Plan)</label>
+                    <input id="applyToken" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 font-mono" placeholder="(plan first)" readonly />
+                    <div class="text-xs text-slate-500 mt-2">Copy this token somewhere safe. Peridot requires it to actually apply.</div>
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Confirm token to enable Apply</label>
+                    <input id="applyTokenConfirm" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 font-mono" placeholder="paste token here" />
+                    <div class="text-xs text-slate-500 mt-2">Safety check: you must paste the token you intend to use.</div>
+                  </div>
+                </div>
+
+                <div class="mt-4 rounded-xl border border-slate-800 bg-slate-950/20 p-3">
+                  <div class="text-xs text-slate-400" id="applySummary">(no plan)</div>
+                  <div class="mt-2 h-2 rounded-full bg-slate-800 overflow-hidden">
+                    <div id="applyProgressBar" class="h-2 bg-amber-600/60" style="width:0%"></div>
+                  </div>
+                </div>
+
+                <details class="mt-3">
+                  <summary class="cursor-pointer text-xs text-slate-400 hover:text-slate-200">Details (JSON)</summary>
+                  <pre id="applyOut" class="mt-2 text-xs overflow-auto max-h-96 bg-slate-950/60 rounded-xl p-4 border border-slate-800">(no plan)</pre>
+                </details>
+              </div>
+            </section>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <!-- Command palette -->
+    <div id="paletteOverlay" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-40"></div>
+    <div id="palette" class="hidden fixed z-50 left-1/2 top-20 -translate-x-1/2 w-[min(720px,calc(100vw-2rem))]">
+      <div class="rounded-2xl border border-slate-700 bg-slate-950/80 backdrop-blur shadow-2xl">
+        <div class="p-3 border-b border-slate-800">
+          <input id="paletteInput" class="w-full rounded-xl bg-slate-900/40 border border-slate-800 px-3 py-2 text-sm outline-none focus:border-emerald-700" placeholder="Search actions…" />
+        </div>
+        <div class="p-2 max-h-96 overflow-auto">
+          <div id="paletteItems" class="flex flex-col gap-1"></div>
+        </div>
+        <div class="p-3 border-t border-slate-800 text-xs text-slate-500">Enter to run · Esc to close</div>
+      </div>
+    </div>
+
+    <script type="module" src="/web/app.js"></script>
+    <script>
+      // bridge for buttons
+      window.__refreshDoctor = () => {};
+      window.__refreshSettings = () => {};
+    </script>
+  </body>
+</html>

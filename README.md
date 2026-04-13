@@ -115,6 +115,30 @@ Modo visual:
 peridot ui
 ```
 
+## GUI experimental (Windows-first)
+
+Peridot incluye un **GUI local experimental** (web app) para empaquetar/aplicar bundles con un flujo guiado.
+
+Instalación (pipx):
+
+```bash
+pipx install "peridot-cli[gui]"
+```
+
+Ejecución:
+
+```bash
+peridot-gui
+# o (dev)
+python -m peridot_gui
+```
+
+Notas Windows:
+- Si `peridot` no está en el PATH, el GUI intenta `python -m peridot` automáticamente.
+- Puedes forzar cómo se invoca el CLI con `PERIDOT_EXE`, por ejemplo:
+  - `PERIDOT_EXE="C:\\Path With Spaces\\peridot.exe"`
+  - `PERIDOT_EXE="python -m peridot"`
+
 Benchmark de rendimiento de `pack`:
 
 ```bash
