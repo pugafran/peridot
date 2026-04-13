@@ -61,6 +61,7 @@ const state = {
     sensitive: [],
     sensitiveAllow: {},
     scan: null,
+    scanning: false,
     jobId: null,
     job: null,
   },
@@ -294,11 +295,19 @@ function renderPackWizard() {
   state.pack.sensitive = sensitive;
 
   if (!state.pack.scan) {
-    ssum.textContent = 'Not scanned yet.';
-    const msg = document.createElement('div');
-    msg.className = 'text-xs text-slate-500';
-    msg.textContent = 'Run the scan (Next) to list sensitive paths.';
-    sbox.appendChild(msg);
+    if (state.pack.scanning) {
+      ssum.textContent = 'Scanning…';
+      const msg = document.createElement('div');
+      msg.className = 'text-xs text-slate-500';
+      msg.textContent = 'This may take a moment on large presets.';
+      sbox.appendChild(msg);
+    } else {
+      ssum.textContent = 'Not scanned yet.';
+      const msg = document.createElement('div');
+      msg.className = 'text-xs text-slate-500';
+      msg.textContent = 'Run the scan (Next) to list sensitive paths.';
+      sbox.appendChild(msg);
+    }
   } else {
     const files = state.pack.scan.files ?? 0;
     const bytes = state.pack.scan.bytes ?? 0;
@@ -451,6 +460,9 @@ async function startPackJob() {
             const cur = p.path ? ` · ${clampStr(String(p.path).replace(/\\/g,'/'), 54)}` : '';
             const sk = (typeof p.skipped === 'number' && p.skipped > 0) ? `skipped ${p.skipped}` : 'skipped file';
             $('#packRunStatus').textContent = `${sk}${cur}`;
+          } else if (p && p.type === 'scan_start') {
+            $('#packProgressBar').style.width = '5%';
+            $('#packRunStatus').textContent = 'scanning…';
           } else if (p && p.type === 'scan_progress') {
             $('#packProgressBar').style.width = '10%';
             const cur = p.current ? ` · ${clampStr(String(p.current).replace(/\\/g,'/'), 54)}` : '';
@@ -785,11 +797,14 @@ async function boot() {
   });
 
   $('#packPrev').addEventListener('click', () => {
+    if (state.pack.scanning) return;
     const v = Math.max(1, Number($('#packStep').value) - 1);
     $('#packStep').value = String(v);
     renderPackWizard();
   });
   $('#packNext').addEventListener('click', async () => {
+    if (state.pack.scanning) return;
+
     const current = Number($('#packStep').value);
     const next = Math.min(4, current + 1);
     // persist fields
@@ -802,14 +817,26 @@ async function boot() {
     if (next === 3) {
       try {
         toastKey('toast.scan');
-        state.pack.scan = await api('/api/pack/scan', { method: 'POST', body: JSON.stringify({ preset: state.preset, paths: state.pack.paths, excludes: (state.pack.userExcludes || []) }) });
+        state.pack.scanning = true;
+        // Show step 3 immediately so the user sees "Scanning…" rather than
+        // a frozen step 2.
+        $('#packStep').value = String(next);
+        renderPackWizard();
+
+        state.pack.scan = await api('/api/pack/scan', {
+          method: 'POST',
+          body: JSON.stringify({ preset: state.preset, paths: state.pack.paths, excludes: (state.pack.userExcludes || []) })
+        });
         // initialize sensitive allow map (default exclude)
         state.pack.sensitiveAllow = {};
         for (const p of (state.pack.scan.sensitive || [])) state.pack.sensitiveAllow[p] = false;
       } catch (e) {
         // If scanning fails, keep the user on the current step so they can fix inputs.
+        $('#packStep').value = String(current);
         toastKey('toast.scanFailed', { err: String(e) }, 'error');
         return;
+      } finally {
+        state.pack.scanning = false;
       }
     }
 
