@@ -3215,12 +3215,23 @@ def cmd_bench(args) -> None:
     size_kb = max(1, int(args.size_kb))
 
     # Parse compression levels like: "0,1,3,6".
+    # Be strict but user-friendly: reject invalid tokens with a clear error
+    # instead of an unhandled ValueError traceback.
     levels: list[int] = []
+    seen_levels: set[int] = set()
     for raw in str(args.levels).split(","):
-        raw = raw.strip()
-        if not raw:
+        token = raw.strip()
+        if not token:
             continue
-        levels.append(sanitize_compression_level(int(raw)))
+        try:
+            parsed = int(token)
+        except ValueError:
+            die(trf("Nivel de compresion invalido en --levels: '{value}'.", value=token))
+        level = sanitize_compression_level(parsed)
+        if level in seen_levels:
+            continue
+        seen_levels.add(level)
+        levels.append(level)
     if not levels:
         levels = [DEFAULT_COMPRESSION_LEVEL]
 

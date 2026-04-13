@@ -31,3 +31,36 @@ def test_bench_smoke(tmp_path: Path, capsys):
     assert "Bench results" in out
     assert "MB/s" in out
     assert out_json.exists()
+
+
+def test_bench_rejects_invalid_levels_token(tmp_path: Path, capsys):
+    key_path = tmp_path / "peridot.key"
+
+    try:
+        peridot.main(
+            [
+                "--key",
+                str(key_path),
+                "bench",
+                "--files",
+                "1",
+                "--size-kb",
+                "1",
+                "--runs",
+                "1",
+                "--levels",
+                "0,wat,3",
+                "--jobs",
+                "1",
+                "--json",
+            ]
+        )
+    except SystemExit as exc:
+        assert exc.code == 1
+    else:
+        raise AssertionError("Expected SystemExit")
+
+    captured = capsys.readouterr()
+    combined = (captured.out or "") + (captured.err or "")
+    assert "Traceback" not in combined
+    assert "--levels" in combined
