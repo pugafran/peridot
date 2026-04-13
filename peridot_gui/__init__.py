@@ -27,6 +27,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+# FastAPI treats `Request` specially only when its type can be resolved from the
+# function globals. Because this module uses `from __future__ import
+# annotations`, FastAPI relies on evaluating annotations at runtime. If we only
+# import Request inside create_app(), it won't be available in globals and FastAPI
+# will incorrectly interpret it as a query parameter.
+try:  # pragma: no cover (depends on optional GUI deps)
+    from starlette.requests import Request as StarletteRequest
+except Exception:  # pragma: no cover
+    StarletteRequest = Any  # type: ignore
+
 
 @dataclass
 class Job:
@@ -248,7 +258,7 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
 # --- FastAPI app ---
 
 def create_app():
-    from fastapi import FastAPI, HTTPException, Request
+    from fastapi import FastAPI, HTTPException
     from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
     app = FastAPI(title="Peridot GUI (experimental)")
@@ -674,15 +684,27 @@ def create_app():
         default_out = f"{_slug(name)}.peridot"
         output_path = _expand_path(str(out)) if out else _expand_path(default_out)
 
-        args = ["pack", name, "--json", "--yes", "--output", output_path, "--description", "peridot gui"]
+        # NOTE: Peridot's argparse wiring is sensitive to the order of
+        # positionals vs optionals for `pack`.
+        #
+        # `paths` must appear *immediately after* the bundle name, otherwise
+        # some invocations fail with:
+        #   peridot: error: unrecognized arguments: <path>
+        #
+        # This is especially important for the GUI where we always pass a few
+        # flags.
 
         # Windows-first: expand user/env vars early so the CLI receives
         # absolute paths (tilde isn't native on Windows).
         expanded_paths = [_expand_path(p) for p in paths] if paths else []
+
+        args = ["pack", name]
         if expanded_paths:
             args.extend(expanded_paths)
         elif not preset:
             raise HTTPException(status_code=400, detail="preset is required when no paths are provided")
+
+        args.extend(["--json", "--yes", "--output", output_path, "--description", "peridot gui"])
 
         for pat in excludes:
             args.extend(["--exclude", pat])
@@ -713,7 +735,7 @@ def create_app():
         }
 
     @app.get("/api/jobs/{job_id}/events")
-    async def job_events(job_id: str, request: Request):
+    async def job_events(job_id: str, request: StarletteRequest):
         """Server-Sent Events stream for job status.
 
         This is a simple streaming layer (not true per-file progress yet), but it
