@@ -3427,80 +3427,80 @@ def cmd_apply(args) -> None:
                 )
 
             for file_entry in filtered_manifest["files"]:
-                    target_path = target_root / file_entry["path"]
-                    ensure_parent(target_path)
+                target_path = target_root / file_entry["path"]
+                ensure_parent(target_path)
 
-                    existed = target_path.exists()
-                    backup_path = None
-                    if existed and backup_dir:
-                        backup_path = backup_existing_file(target_path, backup_dir, target_root)
-                        overwritten += 1
+                existed = target_path.exists()
+                backup_path = None
+                if existed and backup_dir:
+                    backup_path = backup_existing_file(target_path, backup_dir, target_root)
+                    overwritten += 1
 
-                    # Track this change so we can rollback on failure.
-                    changes.append(ApplyChange(target_path=target_path, existed=existed, backup_path=backup_path))
+                # Track this change so we can rollback on failure.
+                changes.append(ApplyChange(target_path=target_path, existed=existed, backup_path=backup_path))
 
-                    # Safety: never write through a pre-existing symlink (would clobber its target).
-                    if existed and target_path.is_symlink():
-                        target_path.unlink()
+                # Safety: never write through a pre-existing symlink (would clobber its target).
+                if existed and target_path.is_symlink():
+                    target_path.unlink()
 
+                try:
+                    encrypted = bundle.read(file_entry["payload"])
+                    payload = decrypt_payload(encrypted, file_entry, key)
+                    raw = inflate_payload(payload, file_entry.get("compression"))
+                except ValueError:
+                    if transactional:
+                        rollback(tr("La clave no coincide con el paquete."))
+                    die(tr("La clave no coincide con el paquete."))
+
+                try:
+                    target_path.write_bytes(raw)
+                except Exception as exc:
+                    if transactional:
+                        rollback(f"write failed: {exc}")
+                    raise
+
+                if verify_write:
                     try:
-                        encrypted = bundle.read(file_entry["payload"])
-                        payload = decrypt_payload(encrypted, file_entry, key)
-                        raw = inflate_payload(payload, file_entry.get("compression"))
-                    except ValueError:
-                        if transactional:
-                            rollback(tr("La clave no coincide con el paquete."))
-                        die(tr("La clave no coincide con el paquete."))
-
-                    try:
-                        target_path.write_bytes(raw)
+                        written = target_path.read_bytes()
                     except Exception as exc:
                         if transactional:
-                            rollback(f"write failed: {exc}")
+                            rollback(f"verify read failed: {exc}")
                         raise
+                    if hashlib.sha256(written).hexdigest() != file_entry["sha256"]:
+                        msg = f"Hash mismatch after write: {file_entry['path']}"
+                        if transactional:
+                            rollback(msg)
+                        die(msg)
 
-                    if verify_write:
-                        try:
-                            written = target_path.read_bytes()
-                        except Exception as exc:
-                            if transactional:
-                                rollback(f"verify read failed: {exc}")
-                            raise
-                        if hashlib.sha256(written).hexdigest() != file_entry["sha256"]:
-                            msg = f"Hash mismatch after write: {file_entry['path']}"
-                            if transactional:
-                                rollback(msg)
-                            die(msg)
+                try:
+                    target_path.chmod(file_entry["mode"])
+                except OSError:
+                    pass
+                restored += 1
 
-                    try:
-                        target_path.chmod(file_entry["mode"])
-                    except OSError:
-                        pass
-                    restored += 1
+                size = int(file_entry.get("size") or 0)
+                bytes_done += size
 
-                    size = int(file_entry.get("size") or 0)
-                    bytes_done += size
+                if progress is not None and task is not None:
+                    progress.update(task, advance=size, file_count=restored)
 
-                    if progress is not None and task is not None:
-                        progress.update(task, advance=size, file_count=restored)
-
-                    if progress_emit:
-                        pct = 0
-                        if total_bytes:
-                            pct = int(min(100, round((bytes_done / max(1, total_bytes)) * 100)))
-                        elif filtered_manifest["files"]:
-                            pct = int(min(100, round((restored / max(1, len(filtered_manifest["files"]))) * 100)))
-                        progress_emit(
-                            {
-                                "type": "apply_progress",
-                                "files_done": int(restored),
-                                "files_total": int(len(filtered_manifest["files"])),
-                                "bytes_done": int(bytes_done),
-                                "bytes_total": int(total_bytes),
-                                "percent": int(pct),
-                                "current": str(file_entry.get("path") or ""),
-                            }
-                        )
+                if progress_emit:
+                    pct = 0
+                    if total_bytes:
+                        pct = int(min(100, round((bytes_done / max(1, total_bytes)) * 100)))
+                    elif filtered_manifest["files"]:
+                        pct = int(min(100, round((restored / max(1, len(filtered_manifest["files"]))) * 100)))
+                    progress_emit(
+                        {
+                            "type": "apply_progress",
+                            "files_done": int(restored),
+                            "files_total": int(len(filtered_manifest["files"])),
+                            "bytes_done": int(bytes_done),
+                            "bytes_total": int(total_bytes),
+                            "percent": int(pct),
+                            "current": str(file_entry.get("path") or ""),
+                        }
+                    )
 
             if progress_emit:
                 progress_emit(
