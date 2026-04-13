@@ -399,9 +399,27 @@ def create_app():
                 raise HTTPException(status_code=500, detail=str(exc))
 
     def _expand_path(p: str) -> str:
-        # Expand ~ and environment variables, then resolve to an absolute path.
-        # Use strict=False so non-existing paths still resolve sensibly.
-        return str(Path(os.path.expandvars(os.path.expanduser(p))).resolve(strict=False))
+        """Expand a user-supplied path into an absolute, normalized path.
+
+        Windows-first behavior:
+        - Accepts ~ and environment variables.
+        - Avoids Path.resolve() edge-cases on Windows (e.g. drive-relative paths,
+          non-existent drives, weird prefixes) by falling back to abspath.
+        """
+
+        raw = str(p or "")
+        expanded = os.path.expandvars(os.path.expanduser(raw))
+
+        # Normalize separators a bit for display/consistency; the OS APIs can
+        # still accept forward slashes on Windows, but we prefer native.
+        if os.name == "nt":
+            expanded = expanded.replace("/", "\\")
+
+        try:
+            return str(Path(expanded).resolve(strict=False))
+        except Exception:
+            # Last resort: avoid raising on odd Windows paths.
+            return os.path.abspath(expanded)
 
     @app.post("/api/pack/scan")
     def pack_scan(payload: dict[str, Any]) -> dict[str, Any]:
