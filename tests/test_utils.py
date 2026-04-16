@@ -104,6 +104,45 @@ def test_detect_repo_venv_dir_accepts_real_venv_layout(monkeypatch, tmp_path):
     assert peridot.detect_repo_venv_dir() == peridot.Path(".venv")
 
 
+def test_detect_repo_venv_dir_accepts_venv_layout(monkeypatch, tmp_path):
+    fake_module_path = tmp_path / "peridot.py"
+    fake_module_path.write_text("# stub\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(peridot, "__file__", str(fake_module_path))
+
+    venv_dir = tmp_path / "venv"
+    venv_dir.mkdir()
+    (venv_dir / "pyvenv.cfg").write_text("home = /usr/bin\n", encoding="utf-8")
+
+    assert peridot.detect_repo_venv_dir() == peridot.Path("venv")
+
+
+def test_venv_activation_hint_supports_venv_dir(monkeypatch, tmp_path):
+    monkeypatch.setattr(peridot, "CURRENT_LANGUAGE", "en")
+
+    # Simulate "not inside a venv" so the hint is emitted even when the test
+    # suite itself is running from one.
+    monkeypatch.setattr(peridot.sys, "prefix", "/usr")
+    monkeypatch.setattr(peridot.sys, "base_prefix", "/usr")
+
+    fake_module_path = tmp_path / "peridot.py"
+    fake_module_path.write_text("# stub\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(peridot, "__file__", str(fake_module_path))
+
+    venv_dir = tmp_path / "venv"
+    venv_dir.mkdir()
+    (venv_dir / "pyvenv.cfg").write_text("home = /usr/bin\n", encoding="utf-8")
+    (venv_dir / "bin").mkdir()
+    (venv_dir / "bin" / "activate").write_text("# stub\n", encoding="utf-8")
+
+    hint = peridot.venv_activation_hint()
+    assert hint is not None
+    assert ". venv/bin/activate" in hint
+
+
 def test_die_falls_back_to_plain_stderr_without_rich(monkeypatch, capsys):
     monkeypatch.setattr(peridot, "RICH_AVAILABLE", False)
     monkeypatch.setattr(peridot, "CURRENT_LANGUAGE", "en")

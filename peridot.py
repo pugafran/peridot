@@ -641,7 +641,7 @@ def is_probably_venv_dir(path: Path) -> bool:
 
 
 def detect_repo_venv_dir() -> Path | None:
-    """Return the most likely .venv directory for hint generation.
+    """Return the most likely virtualenv directory for hint generation.
 
     Peridot is often run from a source checkout, but not necessarily with the
     repo root as the current working directory (e.g. invoked via an absolute
@@ -649,23 +649,24 @@ def detect_repo_venv_dir() -> Path | None:
     virtualenv.
 
     We check (in order):
-    - ./.venv relative to the current working directory
+    - ./.venv relative to the current working directory (recommended)
+    - ./venv relative to the current working directory (common alternative)
     - .venv next to this file (repo checkout)
 
     Notes:
         We only return directories that look like virtualenvs to avoid
-        misleading hints when a project has a file named ".venv".
+        misleading hints when a project has a file named ".venv"/"venv".
     """
 
     try:
-        cwd_venv = Path(".venv")
-        # If the CWD contains a .venv entry, treat it as authoritative:
-        # - when it looks like a venv, use it
-        # - when it doesn't, do NOT fall back to the peridot.py-adjacent .venv
-        #   (we might be running from a different repo and shouldn't emit
-        #   misleading activation hints).
-        if cwd_venv.exists():
-            return cwd_venv if is_probably_venv_dir(cwd_venv) else None
+        for candidate in (Path(".venv"), Path("venv")):
+            # If the CWD contains a .venv/venv entry, treat it as authoritative:
+            # - when it looks like a venv, use it
+            # - when it doesn't, do NOT fall back to the peridot.py-adjacent .venv
+            #   (we might be running from a different repo and shouldn't emit
+            #   misleading activation hints).
+            if candidate.exists():
+                return candidate if is_probably_venv_dir(candidate) else None
 
         file_venv = Path(__file__).resolve().parent / ".venv"
         if is_probably_venv_dir(file_venv):
@@ -762,11 +763,15 @@ def venv_activation_hint() -> str | None:
         if win_activate.exists():
             if venv_dir == Path(".venv"):
                 cmd = ".venv\\Scripts\\activate"
+            elif venv_dir == Path("venv"):
+                cmd = "venv\\Scripts\\activate"
             else:
                 cmd = str(win_activate)
         else:
             if venv_dir == Path(".venv"):
                 cmd = ". .venv/bin/activate"
+            elif venv_dir == Path("venv"):
+                cmd = ". venv/bin/activate"
             else:
                 cmd = f". {shlex.quote(str(posix_activate))}"
 
