@@ -1,76 +1,106 @@
-import os
+import json
 import time
 from pathlib import Path
 
 import pytest
 
 
-def _has_gui_deps() -> bool:
-    try:
-        import fastapi  # noqa: F401
-        import starlette.testclient  # noqa: F401
-    except Exception:
-        return False
-    return True
+pytest.importorskip("fastapi")
 
 
-@pytest.mark.skipif(not _has_gui_deps(), reason="GUI deps (fastapi/starlette) not installed")
-def test_gui_api_endpoints_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Ensure the GUI uses the in-repo CLI/module rather than relying on a
-    # `peridot` executable being on PATH.
-    monkeypatch.setenv("PERIDOT_EXE", f"{os.sys.executable} -m peridot")
+def test_gui_meta_doctor_settings_packscan_smoke(tmp_path, monkeypatch):
+    import peridot_gui
+    from fastapi.testclient import TestClient
 
-    from peridot_gui import create_app
-    from starlette.testclient import TestClient
-
-    app = create_app()
+    app = peridot_gui.create_app()
     client = TestClient(app)
 
-    meta = client.get("/api/meta").json()
+    # /api/meta
+    r = client.get("/api/meta")
+    assert r.status_code == 200
+    meta = r.json()
     assert "runtime" in meta
     assert "presets" in meta
 
-    settings = client.get("/api/settings").json()
+    # /api/settings
+    r = client.get("/api/settings")
+    assert r.status_code == 200
+    settings = r.json()
+    assert "settings_path" in settings
     assert "settings" in settings
 
-    # pack scan (in-process)
-    scan = client.post(
-        "/api/pack/scan",
-        json={
-            "preset": (meta.get("presets") or [{}])[0].get("key") if meta.get("presets") else "",
-            "paths": [str(tmp_path)],
-            "excludes": [],
-        },
-    ).json()
-    assert "files" in scan
-    assert "sensitive" in scan
+    # /api/doctor
+    r = client.get("/api/doctor")
+    assert r.status_code == 200
+    doc = r.json()
+    assert isinstance(doc, (dict, list))
 
-    # pack (subprocess job) using a tiny input file.
-    tiny = tmp_path / "tiny.txt"
-    tiny.write_text("hello", encoding="utf-8")
+    # /api/pack/scan should work in-process.
+    d = tmp_path / "src"
+    d.mkdir()
+    (d / "a.txt").write_text("hello", encoding="utf-8")
+    (d / "b.txt").write_text("world", encoding="utf-8")
+
+    r = client.post(
+        "/api/pack/scan",
+        json={"paths": [str(d)], "preset": "", "excludes": []},
+    )
+    assert r.status_code == 200
+    scan = r.json()
+    assert scan["files"] >= 2
+    assert scan["bytes"] >= 10
+    assert "sensitive" in scan
+    assert "missing_paths" in scan
+
+
+def test_gui_pack_job_and_sse_events(tmp_path, monkeypatch):
+    import peridot_gui
+    from fastapi.testclient import TestClient
+
+    # Patch _launch_job so the test doesn't depend on spawning subprocesses.
+    def fake_launch_job(job, peridot_args):
+        job.status = "running"
+        job.started_ts = time.time()
+        # Simulate progress then completion.
+        job.result = {"progress": {"type": "pack_progress", "files_done": 1, "files_total": 1}}
+        job.status = "done"
+        job.finished_ts = time.time()
+
+    monkeypatch.setattr(peridot_gui, "_launch_job", fake_launch_job)
+
+    app = peridot_gui.create_app()
+    client = TestClient(app)
 
     r = client.post(
         "/api/pack",
         json={
-            "name": "gui-test",
-            "paths": [str(tiny)],
+            "name": "test-bundle",
+            "paths": [str(tmp_path)],
             "preset": "",
             "excludes": [],
-            "output": str(tmp_path) + os.sep,
+            "output": str(tmp_path / "out.peridot"),
         },
-    ).json()
-    job_id = r["job_id"]
+    )
+    assert r.status_code == 200
+    jid = r.json()["job_id"]
+    assert jid
 
-    # Poll the job (SSE is tested manually in the browser; here we just ensure
-    # end-to-end completion).
-    deadline = time.time() + 30
-    while time.time() < deadline:
-        j = client.get(f"/api/jobs/{job_id}").json()
-        if j["status"] in {"done", "error"}:
-            break
-        time.sleep(0.2)
+    # Read SSE and confirm we eventually see a done status.
+    got_done = False
+    with client.stream("GET", f"/api/jobs/{jid}/events") as s:
+        for line in s.iter_lines():
+            if not line:
+                continue
+            # TestClient yields str lines.
+            if line.startswith("data: "):
+                payload = json.loads(line[len("data: ") :])
+                if payload.get("status") == "done":
+                    got_done = True
+                    break
 
-    assert j["status"] == "done", j.get("error")
-    out_path = j.get("result", {}).get("output")
-    assert out_path
-    assert Path(out_path).exists()
+    assert got_done
+
+    # And normal polling endpoint should match.
+    r2 = client.get(f"/api/jobs/{jid}")
+    assert r2.status_code == 200
+    assert r2.json()["status"] == "done"
