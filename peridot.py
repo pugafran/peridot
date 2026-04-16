@@ -2294,7 +2294,7 @@ def _is_sensitive_path(name: str, path_str: str) -> bool:
     # SSH private keys and similar.
     # Note: public keys (e.g. id_ed25519.pub) are intentionally NOT treated as
     # sensitive. They are meant to be shared and flagging them creates noise.
-    key_prefixes = {"id_rsa", "id_ed25519", "id_ecdsa", "id_dsa", "id_ed25519_sk", "id_ecdsa_sk"}
+    key_prefixes = {"id_rsa", "id_ed25519", "id_ecdsa", "id_dsa", "id_ed25519_sk", "id_ecdsa_sk", "id_rsa_sk"}
     for prefix in key_prefixes:
         if name == prefix:
             return True

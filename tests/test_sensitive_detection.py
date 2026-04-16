@@ -15,6 +15,7 @@ def test_detect_sensitive_entries_flags_common_secret_files() -> None:
         _entry("id_ed25519", ".ssh/id_ed25519"),
         _entry("id_ed25519_sk", ".ssh/id_ed25519_sk"),
         _entry("id_ecdsa_sk", ".ssh/id_ecdsa_sk"),
+        _entry("id_rsa_sk", ".ssh/id_rsa_sk"),
         _entry("id_dsa", ".ssh/id_dsa"),
         _entry("known_hosts", ".ssh/known_hosts"),
         _entry("authorized_keys", ".ssh/authorized_keys"),
@@ -66,6 +67,7 @@ def test_detect_sensitive_entries_does_not_flag_public_ssh_keys() -> None:
         _entry("id_ed25519_sk.pub", ".ssh/id_ed25519_sk.pub"),
         _entry("id_ecdsa_sk.pub", ".ssh/id_ecdsa_sk.pub"),
         _entry("id_rsa.pub", ".ssh/id_rsa.pub"),
+        _entry("id_rsa_sk.pub", ".ssh/id_rsa_sk.pub"),
     ]
 
     sensitive = detect_sensitive_entries(entries)
