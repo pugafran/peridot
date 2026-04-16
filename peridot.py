@@ -659,14 +659,13 @@ def detect_repo_venv_dir() -> Path | None:
 
     try:
         cwd_venv = Path(".venv")
-        # If a directory named .venv exists in the CWD, prefer it even if it is
-        # not a fully-populated venv. This keeps hint generation intuitive in
-        # repos that create the folder lazily.
-        if cwd_venv.exists() and cwd_venv.is_dir():
-            return cwd_venv
-        # But ignore files named ".venv" (common in some non-Python tooling).
-        if is_probably_venv_dir(cwd_venv):
-            return cwd_venv
+        # If the CWD contains a .venv entry, treat it as authoritative:
+        # - when it looks like a venv, use it
+        # - when it doesn't, do NOT fall back to the peridot.py-adjacent .venv
+        #   (we might be running from a different repo and shouldn't emit
+        #   misleading activation hints).
+        if cwd_venv.exists():
+            return cwd_venv if is_probably_venv_dir(cwd_venv) else None
 
         file_venv = Path(__file__).resolve().parent / ".venv"
         if is_probably_venv_dir(file_venv):

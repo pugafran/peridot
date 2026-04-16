@@ -73,6 +73,21 @@ def test_detect_repo_venv_dir_ignores_non_venv_dotvenv(monkeypatch, tmp_path):
     assert peridot.detect_repo_venv_dir() is None
 
 
+def test_detect_repo_venv_dir_ignores_empty_dotvenv_dir(monkeypatch, tmp_path):
+    # Ensure the fallback (.venv next to peridot.py) also doesn't exist.
+    fake_module_path = tmp_path / "peridot.py"
+    fake_module_path.write_text("# stub\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(peridot, "__file__", str(fake_module_path))
+
+    # A repo might have a folder named .venv that is NOT a Python virtualenv.
+    # In that case we should not emit activation/install hints based on it.
+    (tmp_path / ".venv").mkdir()
+
+    assert peridot.detect_repo_venv_dir() is None
+
+
 def test_detect_repo_venv_dir_accepts_real_venv_layout(monkeypatch, tmp_path):
     fake_module_path = tmp_path / "peridot.py"
     fake_module_path.write_text("# stub\n", encoding="utf-8")
