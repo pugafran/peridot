@@ -58,6 +58,37 @@ def test_install_hint_does_not_quote_pip_option_targets(monkeypatch):
     assert "'-U peridot-cli'" not in cmd
 
 
+def test_detect_repo_venv_dir_ignores_non_venv_dotvenv(monkeypatch, tmp_path):
+    # Ensure the fallback (.venv next to peridot.py) also doesn't exist.
+    fake_module_path = tmp_path / "peridot.py"
+    fake_module_path.write_text("# stub\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(peridot, "__file__", str(fake_module_path))
+
+    # A project might contain a file called ".venv"; it should not be treated
+    # as a virtualenv.
+    (tmp_path / ".venv").write_text("not a venv\n", encoding="utf-8")
+
+    assert peridot.detect_repo_venv_dir() is None
+
+
+def test_detect_repo_venv_dir_accepts_real_venv_layout(monkeypatch, tmp_path):
+    fake_module_path = tmp_path / "peridot.py"
+    fake_module_path.write_text("# stub\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(peridot, "__file__", str(fake_module_path))
+
+    venv_dir = tmp_path / ".venv"
+    venv_dir.mkdir()
+    (venv_dir / "pyvenv.cfg").write_text("home = /usr/bin\n", encoding="utf-8")
+
+    # detect_repo_venv_dir intentionally returns a relative .venv when it is
+    # found in the current working directory.
+    assert peridot.detect_repo_venv_dir() == peridot.Path(".venv")
+
+
 def test_die_falls_back_to_plain_stderr_without_rich(monkeypatch, capsys):
     monkeypatch.setattr(peridot, "RICH_AVAILABLE", False)
     monkeypatch.setattr(peridot, "CURRENT_LANGUAGE", "en")

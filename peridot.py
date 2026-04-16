@@ -614,6 +614,32 @@ def trf(text: str, **kwargs) -> str:
     return tr(text).format(**kwargs)
 
 
+def is_probably_venv_dir(path: Path) -> bool:
+    """Heuristic check: does *path* look like a Python virtualenv directory?"""
+
+    try:
+        if not path.exists() or not path.is_dir():
+            return False
+
+        # pyvenv.cfg is the most reliable marker.
+        if (path / "pyvenv.cfg").exists():
+            return True
+
+        # Fallback: common interpreter locations.
+        if (path / "bin" / "python").exists() or (path / "bin" / "python3").exists():
+            return True
+        if (path / "Scripts" / "python.exe").exists() or (path / "Scripts" / "python").exists():
+            return True
+
+        # Last resort: activation scripts (some tests/fake venvs only provide these).
+        if (path / "bin" / "activate").exists() or (path / "Scripts" / "activate").exists():
+            return True
+
+        return False
+    except Exception:
+        return False
+
+
 def detect_repo_venv_dir() -> Path | None:
     """Return the most likely .venv directory for hint generation.
 
@@ -625,15 +651,25 @@ def detect_repo_venv_dir() -> Path | None:
     We check (in order):
     - ./.venv relative to the current working directory
     - .venv next to this file (repo checkout)
+
+    Notes:
+        We only return directories that look like virtualenvs to avoid
+        misleading hints when a project has a file named ".venv".
     """
 
     try:
         cwd_venv = Path(".venv")
-        if cwd_venv.exists():
+        # If a directory named .venv exists in the CWD, prefer it even if it is
+        # not a fully-populated venv. This keeps hint generation intuitive in
+        # repos that create the folder lazily.
+        if cwd_venv.exists() and cwd_venv.is_dir():
+            return cwd_venv
+        # But ignore files named ".venv" (common in some non-Python tooling).
+        if is_probably_venv_dir(cwd_venv):
             return cwd_venv
 
         file_venv = Path(__file__).resolve().parent / ".venv"
-        if file_venv.exists():
+        if is_probably_venv_dir(file_venv):
             return file_venv
     except Exception:
         return None
