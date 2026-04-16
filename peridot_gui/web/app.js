@@ -689,6 +689,19 @@ async function boot() {
     const v = e.target.value;
     if (v) $('#inspectPath').value = v;
   });
+
+  // Populate Inspect bundle list on boot so the page is usable immediately.
+  // (Windows-first UX: reduce empty states / extra clicks.)
+  refreshBundles().then(() => {
+    try {
+      const sel = $('#bundleSelect');
+      const first = sel && sel.options && sel.options.length ? sel.options[0].value : '';
+      const inp = $('#inspectPath');
+      if (first && inp && !String(inp.value || '').trim()) inp.value = first;
+    } catch {
+      // ignore
+    }
+  });
   // clipboard + reveal helpers are defined at module scope
 
   function safeGet(obj, path, fallback = null) {
