@@ -713,6 +713,37 @@ def create_app():
         slug = "".join(out).strip("-._")
         return slug or "bundle"
 
+    def _compute_output_path(*, name: str, output_raw: str | None) -> str:
+        """Compute a safe output bundle path.
+
+        Windows-first UX:
+        - If the user passes a directory (existing) or a path ending in a path
+          separator (e.g. "C:\\tmp\\"), write into that directory using a
+          deterministic filename.
+        - Otherwise treat it as a file path.
+        """
+
+        suggested_name = f"{_slug(name)}.peridot"
+
+        if not output_raw:
+            return _expand_path(suggested_name)
+
+        raw = str(output_raw)
+        expanded = _expand_path(raw)
+        p = Path(expanded)
+
+        # If the user typed a trailing separator, interpret as directory.
+        if raw.endswith(("/", "\\")):
+            return str((p / suggested_name))
+
+        try:
+            if p.exists() and p.is_dir():
+                return str((p / suggested_name))
+        except Exception:
+            pass
+
+        return str(p)
+
     @app.post("/api/pack")
     def pack(payload: dict[str, Any]) -> dict[str, Any]:
         preset = str(payload.get("preset") or "").strip()
@@ -734,8 +765,7 @@ def create_app():
         # CLI falling into interactive prompts, we always pass --output and a
         # non-empty --description.
         out = payload.get("output")
-        default_out = f"{_slug(name)}.peridot"
-        output_path = _expand_path(str(out)) if out else _expand_path(default_out)
+        output_path = _compute_output_path(name=name, output_raw=(str(out) if out is not None else None))
 
         # NOTE: Peridot's argparse wiring is sensitive to the order of
         # positionals vs optionals for `pack`.

@@ -57,6 +57,7 @@ const state = {
     name: '',
     paths: [],
     output: '',
+    outputTouched: false,
     userExcludes: [],
     sensitive: [],
     sensitiveAllow: {},
@@ -298,6 +299,23 @@ function parsePatternsInput(raw) {
   return parts.map(s => s.trim()).filter(Boolean);
 }
 
+function slugName(s) {
+  const raw = String(s || '').trim().toLowerCase();
+  if (!raw) return 'bundle';
+  let out = '';
+  for (const ch of raw) {
+    if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')) out += ch;
+    else if (ch === '-' || ch === '_' || ch === '.') out += ch;
+    else if (ch === ' ' || ch === '\t') out += '-';
+  }
+  out = out.replace(/[-_.]+$/,'').replace(/^[-_.]+/,'').replace(/-+/g,'-');
+  return out || 'bundle';
+}
+
+function suggestOutputFromName(name) {
+  return `${slugName(name)}.peridot`;
+}
+
 function renderPackWizard() {
   // step visibility
   const step = Number($('#packStep').value);
@@ -370,6 +388,9 @@ function renderPackWizard() {
       // Suggest defaults from preset
       const host = (state.meta?.host || '').toLowerCase() || 'host';
       state.pack.name = `${host}-${p.key}`.replace(/[^a-z0-9-]+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').slice(0,64) || 'bundle';
+      if (!state.pack.outputTouched && !state.pack.output) {
+        state.pack.output = suggestOutputFromName(state.pack.name);
+      }
       const spec = (state.meta?.presets||[]).find(x => x.key === p.key);
       if (spec && Array.isArray(spec.paths) && !state.pack.paths.length) {
         state.pack.paths = spec.paths;
@@ -891,6 +912,21 @@ async function boot() {
     $('#packStep').value = String(next);
     renderPackWizard();
   });
+  // pack: output suggestion
+  $('#packName')?.addEventListener('input', (e) => {
+    const v = String(e.target.value || '');
+    state.pack.name = v;
+    if (!state.pack.outputTouched) {
+      state.pack.output = v.trim() ? suggestOutputFromName(v) : '';
+      const outEl = $('#packOutput');
+      if (outEl) outEl.value = state.pack.output;
+    }
+  });
+  $('#packOutput')?.addEventListener('input', (e) => {
+    state.pack.outputTouched = true;
+    state.pack.output = String(e.target.value || '');
+  });
+
   $('#packRunBtn').addEventListener('click', () => startPackJob());
 
   // sensitive bulk actions
