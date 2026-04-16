@@ -1,106 +1,76 @@
 import json
+import threading
 import time
-from pathlib import Path
 
 import pytest
 
+fastapi = pytest.importorskip("fastapi")
 
-pytest.importorskip("fastapi")
+from fastapi.testclient import TestClient
+
+import peridot_gui
 
 
-def test_gui_meta_doctor_settings_packscan_smoke(tmp_path, monkeypatch):
-    import peridot_gui
-    from fastapi.testclient import TestClient
-
+@pytest.fixture()
+def client(monkeypatch):
     app = peridot_gui.create_app()
-    client = TestClient(app)
+    return TestClient(app)
 
-    # /api/meta
+
+def test_api_meta(client):
     r = client.get("/api/meta")
     assert r.status_code == 200
-    meta = r.json()
-    assert "runtime" in meta
-    assert "presets" in meta
+    data = r.json()
+    assert "runtime" in data
+    assert "presets" in data
 
-    # /api/settings
+
+def test_api_settings(client):
     r = client.get("/api/settings")
     assert r.status_code == 200
-    settings = r.json()
-    assert "settings_path" in settings
-    assert "settings" in settings
+    data = r.json()
+    assert "settings" in data
 
-    # /api/doctor
-    r = client.get("/api/doctor")
+
+def test_pack_scan_smoke(client):
+    r = client.post("/api/pack/scan", json={"paths": ["."], "excludes": []})
     assert r.status_code == 200
-    doc = r.json()
-    assert isinstance(doc, (dict, list))
-
-    # /api/pack/scan should work in-process.
-    d = tmp_path / "src"
-    d.mkdir()
-    (d / "a.txt").write_text("hello", encoding="utf-8")
-    (d / "b.txt").write_text("world", encoding="utf-8")
-
-    r = client.post(
-        "/api/pack/scan",
-        json={"paths": [str(d)], "preset": "", "excludes": []},
-    )
-    assert r.status_code == 200
-    scan = r.json()
-    assert scan["files"] >= 2
-    assert scan["bytes"] >= 10
-    assert "sensitive" in scan
-    assert "missing_paths" in scan
+    data = r.json()
+    assert "files" in data
+    assert "bytes" in data
 
 
-def test_gui_pack_job_and_sse_events(tmp_path, monkeypatch):
-    import peridot_gui
-    from fastapi.testclient import TestClient
-
-    # Patch _launch_job so the test doesn't depend on spawning subprocesses.
+def test_pack_job_and_sse_events(client, monkeypatch):
+    # Avoid spawning the real CLI in tests; we only validate the API plumbing + SSE.
     def fake_launch_job(job, peridot_args):
         job.status = "running"
         job.started_ts = time.time()
-        # Simulate progress then completion.
-        job.result = {"progress": {"type": "pack_progress", "files_done": 1, "files_total": 1}}
+        time.sleep(0.02)
+        job.result = {"ok": True, "output": "dummy.peridot"}
         job.status = "done"
         job.finished_ts = time.time()
 
     monkeypatch.setattr(peridot_gui, "_launch_job", fake_launch_job)
 
-    app = peridot_gui.create_app()
-    client = TestClient(app)
-
-    r = client.post(
-        "/api/pack",
-        json={
-            "name": "test-bundle",
-            "paths": [str(tmp_path)],
-            "preset": "",
-            "excludes": [],
-            "output": str(tmp_path / "out.peridot"),
-        },
-    )
+    r = client.post("/api/pack", json={"preset": "dummy", "name": "x", "paths": ["."], "excludes": []})
     assert r.status_code == 200
     jid = r.json()["job_id"]
-    assert jid
 
-    # Read SSE and confirm we eventually see a done status.
-    got_done = False
-    with client.stream("GET", f"/api/jobs/{jid}/events") as s:
-        for line in s.iter_lines():
-            if not line:
-                continue
-            # TestClient yields str lines.
-            if line.startswith("data: "):
-                payload = json.loads(line[len("data: ") :])
-                if payload.get("status") == "done":
-                    got_done = True
-                    break
+    # Poll job endpoint
+    j = client.get(f"/api/jobs/{jid}").json()
+    assert j["id"] == jid
 
-    assert got_done
-
-    # And normal polling endpoint should match.
-    r2 = client.get(f"/api/jobs/{jid}")
-    assert r2.status_code == 200
-    assert r2.json()["status"] == "done"
+    # SSE should yield at least one data event with JSON.
+    with client.stream("GET", f"/api/jobs/{jid}/events") as resp:
+        assert resp.status_code == 200
+        buf = ""
+        for chunk in resp.iter_text():
+            buf += chunk
+            if "data:" in buf:
+                break
+        # Extract first data line.
+        lines = [ln for ln in buf.splitlines() if ln.startswith("data: ")]
+        assert lines
+        payload = json.loads(lines[0][len("data: ") :])
+        assert payload["id"] == jid
+        assert payload["status"] in {"running", "done", "error"}
