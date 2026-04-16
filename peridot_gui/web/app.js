@@ -406,8 +406,19 @@ function renderPackWizard() {
   ssum.textContent = '';
   sbox.innerHTML = '';
 
-  const sensitivePaths = state.pack.scan?.sensitive || [];
-  const sensitive = sensitivePaths.map(p => ({ path: p, reason: 'Sensitive path detected' }));
+  // Back-compat: older servers returned scan.sensitive as a list of strings.
+  // Newer servers return scan.sensitive as [{path, reason}] and also include
+  // scan.sensitive_paths.
+  const rawSensitive = state.pack.scan?.sensitive || [];
+  let sensitive = [];
+  if (Array.isArray(rawSensitive) && rawSensitive.length && typeof rawSensitive[0] === 'object') {
+    sensitive = rawSensitive
+      .filter(x => x && typeof x.path === 'string')
+      .map(x => ({ path: x.path, reason: String(x.reason || 'Sensitive path detected') }));
+  } else {
+    const sensitivePaths = Array.isArray(rawSensitive) ? rawSensitive : (state.pack.scan?.sensitive_paths || []);
+    sensitive = (sensitivePaths || []).map(p => ({ path: p, reason: 'Sensitive path detected' }));
+  }
   state.pack.sensitive = sensitive;
 
   if (!state.pack.scan) {
@@ -535,7 +546,11 @@ async function startPackJob() {
     // and merge with user-supplied exclude patterns.
     const excludes = [];
     for (const pat of (state.pack.userExcludes || [])) excludes.push(pat);
-    for (const sp of (state.pack.scan?.sensitive || [])) {
+    const sRaw = state.pack.scan?.sensitive || [];
+    const sPaths = (Array.isArray(sRaw) && sRaw.length && typeof sRaw[0] === 'object')
+      ? sRaw.map(x => x && x.path).filter(Boolean)
+      : (sRaw || []);
+    for (const sp of (sPaths || [])) {
       if (!state.pack.sensitiveAllow[sp]) excludes.push(sp);
     }
     const uniq = Array.from(new Set(excludes));
@@ -911,7 +926,11 @@ async function boot() {
         });
         // initialize sensitive allow map (default exclude)
         state.pack.sensitiveAllow = {};
-        for (const p of (state.pack.scan.sensitive || [])) state.pack.sensitiveAllow[p] = false;
+        const sRaw = state.pack.scan.sensitive || [];
+        const sPaths = (Array.isArray(sRaw) && sRaw.length && typeof sRaw[0] === 'object')
+          ? sRaw.map(x => x && x.path).filter(Boolean)
+          : (sRaw || []);
+        for (const p of (sPaths || [])) state.pack.sensitiveAllow[p] = false;
       } catch (e) {
         // If scanning fails, keep the user on the current step so they can fix inputs.
         $('#packStep').value = String(current);

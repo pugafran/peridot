@@ -530,7 +530,32 @@ def create_app():
             entries = peridot_mod.collect_files(existing)
 
         entries = peridot_mod.filter_entries(entries, excludes)
-        sensitive = peridot_mod.detect_sensitive_entries(entries)
+        sensitive_entries = peridot_mod.detect_sensitive_entries(entries)
+
+        def _sensitive_reason(relpath: str) -> str:
+            rp = (relpath or "").replace("\\", "/")
+            name = rp.split("/")[-1].lower()
+            rp_l = rp.lower()
+
+            if name in {".env", ".env.local", ".env.production", ".env.development", ".env.test"} or "/.env" in rp_l:
+                return "Environment file (.env)"
+            if name == ".netrc" or rp_l.endswith("/.netrc"):
+                return "netrc credentials"
+            if "/.ssh/" in rp_l or rp_l.startswith(".ssh/"):
+                if name.startswith("id_") and not name.endswith(".pub"):
+                    return "SSH private key"
+                if "known_hosts" in name or name == "config":
+                    return "SSH configuration"
+                return "SSH-related file"
+            if "credential" in name or "/credentials" in rp_l or "credentials" in name:
+                return "Credentials file"
+            if "token" in name or "/token" in rp_l:
+                return "Token file"
+
+            return "Sensitive path detected"
+
+        sensitive_paths = sorted({e.relative_path.replace("\\", "/") for e in sensitive_entries})
+        sensitive = [{"path": p, "reason": _sensitive_reason(p)} for p in sensitive_paths]
 
         total_bytes = int(sum(getattr(e, "size", 0) for e in entries))
         return {
@@ -542,7 +567,10 @@ def create_app():
             "excludes": excludes,
             "files": len(entries),
             "bytes": total_bytes,
-            "sensitive": sorted({e.relative_path.replace("\\", "/") for e in sensitive}),
+            # Back-compat: keep sensitive_paths as a simple list.
+            "sensitive_paths": sensitive_paths,
+            # Preferred shape for the GUI.
+            "sensitive": sensitive,
         }
 
     def _list_bundles_in_dir(dir_path: Path) -> list[dict[str, Any]]:
