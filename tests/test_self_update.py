@@ -68,3 +68,27 @@ def test_maybe_suggest_self_update_emits_message_when_newer(monkeypatch, capsys)
 
     captured = capsys.readouterr()
     assert "Update available" in (captured.err + captured.out)
+
+
+def test_maybe_suggest_self_update_can_be_disabled_by_flag(monkeypatch, capsys):
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("PERIDOT_UPDATE_CHECK", raising=False)
+
+    settings = {
+        "update_check_enabled": True,
+        "update_check_last_ts": 0,
+        "update_check_interval_hours": 0,
+        "language": "en",
+        "compression_level": 3,
+        "jobs": 2,
+    }
+
+    monkeypatch.setattr(peridot, "load_settings", lambda *a, **k: dict(settings))
+    monkeypatch.setattr(peridot, "save_settings", lambda *a, **k: None)
+    monkeypatch.setattr(peridot, "fetch_latest_pypi_version", lambda *a, **k: "999.0.0")
+
+    args = types.SimpleNamespace(json=False, no_update_check=True)
+    peridot.maybe_suggest_self_update(args)
+
+    captured = capsys.readouterr()
+    assert (captured.err + captured.out).strip() == ""

@@ -837,6 +837,10 @@ def should_check_for_updates(settings: dict, *, now_ts: int | None = None) -> bo
 
 
 def maybe_suggest_self_update(args: argparse.Namespace) -> None:
+    # Allow explicit opt-out for scripts.
+    if bool(getattr(args, "no_update_check", False)):
+        return
+
     # Avoid noise in machine-readable outputs / non-interactive contexts.
     if bool(getattr(args, "json", False)):
         return
@@ -4492,6 +4496,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="version",
         version=f"%(prog)s {APP_VERSION}",
         help=tr("Muestra la version y sale"),
+    )
+    parser.add_argument(
+        "--no-update-check",
+        dest="no_update_check",
+        action="store_true",
+        help=tr("No comprueba actualizaciones (desactiva el aviso)."),
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
