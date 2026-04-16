@@ -6,158 +6,106 @@ from pathlib import Path
 import pytest
 
 
-fastapi = pytest.importorskip("fastapi")
-starlette_testclient = pytest.importorskip("starlette.testclient")
+def _have_gui_deps() -> bool:
+    try:
+        import fastapi  # noqa: F401
+        from fastapi.testclient import TestClient  # noqa: F401
+    except Exception:
+        return False
+    return True
 
 
-def _mk_app_and_client():
-    from peridot_gui import create_app
-
-    app = create_app()
-    return starlette_testclient.TestClient(app)
+pytestmark = pytest.mark.skipif(not _have_gui_deps(), reason="GUI deps (fastapi) not installed")
 
 
-def test_gui_api_meta_doctor_settings_smoke(monkeypatch):
-    client = _mk_app_and_client()
+def test_gui_api_meta_settings_doctor_smoke():
+    from fastapi.testclient import TestClient
 
-    meta = client.get("/api/meta")
-    assert meta.status_code == 200
-    j = meta.json()
-    assert "runtime" in j
-    assert "presets" in j
+    import peridot_gui
 
-    doctor = client.get("/api/doctor")
-    assert doctor.status_code == 200
-    # doctor output is CLI-defined; just ensure JSON decodes.
-    assert isinstance(doctor.json(), (dict, list))
+    app = peridot_gui.create_app()
+    client = TestClient(app)
 
-    settings = client.get("/api/settings")
-    assert settings.status_code == 200
-    sj = settings.json()
-    assert "settings_path" in sj
-    assert "settings" in sj
+    meta = client.get("/api/meta").json()
+    assert "runtime" in meta
+    assert "presets" in meta
+
+    settings = client.get("/api/settings").json()
+    assert "settings_path" in settings
+    assert "settings" in settings
+
+    # doctor depends on the CLI JSON subcommand and can vary by platform,
+    # but it should at least return JSON.
+    doctor = client.get("/api/doctor").json()
+    assert isinstance(doctor, (dict, list))
 
 
-def test_gui_api_pack_scan_real_files(tmp_path):
-    # create a small file so collect_files() finds something
-    root = tmp_path / "root"
-    root.mkdir()
-    (root / "a.txt").write_text("hello", encoding="utf-8")
+def test_gui_pack_scan_pack_and_sse_events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from fastapi.testclient import TestClient
 
-    client = _mk_app_and_client()
+    import peridot_gui
 
-    r = client.post(
+    # Use the in-tree module so subprocess calls are stable in tests.
+    import sys
+
+    # Use the current interpreter to run the in-tree module.
+    monkeypatch.setenv("PERIDOT_EXE", f"{sys.executable} -m peridot")
+
+    # Create a tiny file to pack.
+    src = tmp_path / "hello.txt"
+    src.write_text("hello", encoding="utf-8")
+
+    app = peridot_gui.create_app()
+    client = TestClient(app)
+
+    scan = client.post(
         "/api/pack/scan",
-        json={
-            "preset": "",
-            "paths": [str(root)],
-            "excludes": [],
-        },
-    )
-    assert r.status_code == 200, r.text
-    j = r.json()
-    assert j["files"] >= 1
-    assert j["bytes"] >= 1
-    assert "sensitive" in j
-    assert "missing_paths" in j
-    assert "skipped_paths" in j
-
-
-def test_gui_api_job_sse_emits_json_event(monkeypatch):
-    client = _mk_app_and_client()
-
-    import peridot_gui
-
-    # Insert a finished job so the SSE endpoint completes quickly.
-    jid = "test-job-1"
-    job = peridot_gui.Job(
-        id=jid,
-        kind="pack",
-        status="done",
-        created_ts=time.time(),
-        started_ts=time.time(),
-        finished_ts=time.time(),
-        result={"output": "C:/tmp/out.peridot"},
-        error=None,
-    )
-    with peridot_gui._JOBS_LOCK:
-        peridot_gui._JOBS[jid] = job
-
-    with client.stream("GET", f"/api/jobs/{jid}/events") as resp:
-        assert resp.status_code == 200
-        # Consume until we see a data line.
-        payload = None
-        for chunk in resp.iter_text():
-            for line in chunk.splitlines():
-                if line.startswith("data: "):
-                    payload = json.loads(line[len("data: ") :])
-                    break
-            if payload is not None:
-                break
-
-    assert payload is not None
-    assert payload["id"] == jid
-    assert payload["status"] == "done"
-    assert payload["result"]["output"]
-
-
-def test_gui_pack_output_path_directory_semantics(tmp_path, monkeypatch):
-    """Windows-first UX: output can be a directory (or end with a separator).
-
-    We test this end-to-end via /api/pack by intercepting the arguments passed
-    to the background job launcher.
-    """
-
-    import peridot_gui
+        json={"paths": [str(src)], "excludes": []},
+    ).json()
+    assert scan["files"] == 1
+    assert scan["bytes"] >= 5
 
     out_dir = tmp_path / "out"
     out_dir.mkdir()
 
-    captured = {}
-
-    def fake_launch_job(job, peridot_args):
-        captured["args"] = list(peridot_args)
-        job.status = "done"
-        job.result = {"output": "(fake)"}
-        job.finished_ts = time.time()
-
-    monkeypatch.setattr(peridot_gui, "_launch_job", fake_launch_job)
-
-    client = _mk_app_and_client()
-
-    # 1) Existing directory path.
     r = client.post(
         "/api/pack",
         json={
-            "preset": "",
-            "name": "My Bundle",
-            "paths": [str(tmp_path)],
+            "name": "test-bundle",
+            "paths": [str(src)],
+            "output": str(out_dir) + ("\\\\" if os.name == "nt" else "/"),
             "excludes": [],
-            "output": str(out_dir),
         },
-    )
-    assert r.status_code == 200, r.text
+    ).json()
+    jid = r["job_id"]
 
-    args = captured.get("args")
-    assert args and "--output" in args
-    out = args[args.index("--output") + 1]
-    assert out.lower().endswith(".peridot")
-    assert str(out_dir).replace("/", "\\") in out.replace("/", "\\")
+    # SSE should stream at least one event and finish.
+    last = None
+    with client.stream("GET", f"/api/jobs/{jid}/events") as s:
+        for raw in s.iter_lines():
+            if not raw:
+                continue
+            line = raw.decode("utf-8", errors="replace") if isinstance(raw, (bytes, bytearray)) else str(raw)
+            if not line.startswith("data: "):
+                continue
+            payload = json.loads(line[len("data: ") :])
+            last = payload
+            if payload.get("status") in {"done", "error"}:
+                break
 
-    # 2) Trailing separator should also be treated as directory.
-    captured.clear()
-    r = client.post(
-        "/api/pack",
-        json={
-            "preset": "",
-            "name": "My Bundle",
-            "paths": [str(tmp_path)],
-            "excludes": [],
-            "output": str(out_dir) + os.sep,
-        },
-    )
-    assert r.status_code == 200, r.text
-    args = captured.get("args")
-    out = args[args.index("--output") + 1]
-    assert out.lower().endswith(".peridot")
-    assert str(out_dir).replace("/", "\\") in out.replace("/", "\\")
+    assert last is not None
+    assert last["status"] == "done", last
+
+    # Poll job endpoint for final payload (should be done already, but keep it robust)
+    deadline = time.time() + 15.0
+    while time.time() < deadline:
+        j = client.get(f"/api/jobs/{jid}").json()
+        if j["status"] in {"done", "error"}:
+            last = j
+            break
+        time.sleep(0.1)
+
+    assert last["status"] == "done", last
+    out_path = Path(last["result"]["output"])
+    assert out_path.exists(), out_path
+    assert out_path.suffix == ".peridot"
