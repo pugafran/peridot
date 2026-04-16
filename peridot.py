@@ -140,12 +140,21 @@ def read_pyproject_version(pyproject_path: Path) -> str | None:
         return None
 
     project = data.get("project")
-    if not isinstance(project, dict):
-        return None
+    if isinstance(project, dict):
+        version = project.get("version")
+        if isinstance(version, str) and version.strip():
+            return version.strip()
 
-    version = project.get("version")
-    if isinstance(version, str) and version.strip():
-        return version.strip()
+    # Optional fallback: Poetry-style metadata used by some repos.
+    # This keeps --version useful even when PEP 621 [project] is not present.
+    tool = data.get("tool")
+    if isinstance(tool, dict):
+        poetry = tool.get("poetry")
+        if isinstance(poetry, dict):
+            version = poetry.get("version")
+            if isinstance(version, str) and version.strip():
+                return version.strip()
+
     return None
 
 

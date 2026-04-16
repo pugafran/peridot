@@ -22,6 +22,20 @@ version = "1.2.3"
     assert peridot.read_pyproject_version(pyproject) == "1.2.3"
 
 
+def test_read_pyproject_version_poetry_fallback(tmp_path: Path):
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        """
+[tool.poetry]
+name = "peridot-cli"
+version = "9.9.9"
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    assert peridot.read_pyproject_version(pyproject) == "9.9.9"
+
+
 def test_read_pyproject_version_missing(tmp_path: Path):
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text("[project]\nname='x'\n", encoding="utf-8")
