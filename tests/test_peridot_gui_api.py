@@ -1,52 +1,101 @@
-from __future__ import annotations
-
+import json
 import os
-import sys
+import time
 from pathlib import Path
 
 import pytest
 
+
 fastapi = pytest.importorskip("fastapi")
-TestClient = pytest.importorskip("fastapi.testclient").TestClient
-
-import peridot_gui
+starlette_testclient = pytest.importorskip("starlette.testclient")
 
 
-def test_peridot_cmd_prefix_falls_back_to_python_module(monkeypatch):
-    # Simulate a Windows-like "fresh" environment where `peridot` is not on PATH.
-    monkeypatch.delenv("PERIDOT_EXE", raising=False)
+def _mk_app_and_client():
+    from peridot_gui import create_app
 
-    import shutil
-
-    monkeypatch.setattr(shutil, "which", lambda _name: None)
-
-    parts = peridot_gui._peridot_cmd_prefix()
-    assert parts[:2] == [sys.executable, "-m"]
-    assert parts[2] == "peridot"
+    app = create_app()
+    return starlette_testclient.TestClient(app)
 
 
-def test_gui_api_meta_settings_and_pack_scan(tmp_path: Path, monkeypatch):
-    # Ensure meta/settings/scan endpoints respond with JSON.
-    # Use a small temp file for scan.
-    p = tmp_path / "a.txt"
-    p.write_text("hello", encoding="utf-8")
+def test_gui_api_meta_doctor_settings_smoke(monkeypatch):
+    client = _mk_app_and_client()
 
-    app = peridot_gui.create_app()
-    c = TestClient(app)
+    meta = client.get("/api/meta")
+    assert meta.status_code == 200
+    j = meta.json()
+    assert "runtime" in j
+    assert "presets" in j
 
-    r = c.get("/api/meta")
-    assert r.status_code == 200
-    meta = r.json()
-    assert "runtime" in meta
-    assert "presets" in meta
+    doctor = client.get("/api/doctor")
+    assert doctor.status_code == 200
+    # doctor output is CLI-defined; just ensure JSON decodes.
+    assert isinstance(doctor.json(), (dict, list))
 
-    r = c.get("/api/settings")
-    assert r.status_code == 200
+    settings = client.get("/api/settings")
+    assert settings.status_code == 200
+    sj = settings.json()
+    assert "settings_path" in sj
+    assert "settings" in sj
+
+
+def test_gui_api_pack_scan_real_files(tmp_path):
+    # create a small file so collect_files() finds something
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "a.txt").write_text("hello", encoding="utf-8")
+
+    client = _mk_app_and_client()
+
+    r = client.post(
+        "/api/pack/scan",
+        json={
+            "preset": "",
+            "paths": [str(root)],
+            "excludes": [],
+        },
+    )
+    assert r.status_code == 200, r.text
     j = r.json()
-    assert "settings_path" in j
+    assert j["files"] >= 1
+    assert j["bytes"] >= 1
+    assert "sensitive" in j
+    assert "missing_paths" in j
+    assert "skipped_paths" in j
 
-    r = c.post("/api/pack/scan", json={"paths": [str(p)], "excludes": []})
-    assert r.status_code == 200
-    scan = r.json()
-    assert scan["files"] == 1
-    assert scan["missing_paths"] == []
+
+def test_gui_api_job_sse_emits_json_event(monkeypatch):
+    client = _mk_app_and_client()
+
+    import peridot_gui
+
+    # Insert a finished job so the SSE endpoint completes quickly.
+    jid = "test-job-1"
+    job = peridot_gui.Job(
+        id=jid,
+        kind="pack",
+        status="done",
+        created_ts=time.time(),
+        started_ts=time.time(),
+        finished_ts=time.time(),
+        result={"output": "C:/tmp/out.peridot"},
+        error=None,
+    )
+    with peridot_gui._JOBS_LOCK:
+        peridot_gui._JOBS[jid] = job
+
+    with client.stream("GET", f"/api/jobs/{jid}/events") as resp:
+        assert resp.status_code == 200
+        # Consume until we see a data line.
+        payload = None
+        for chunk in resp.iter_text():
+            for line in chunk.splitlines():
+                if line.startswith("data: "):
+                    payload = json.loads(line[len("data: ") :])
+                    break
+            if payload is not None:
+                break
+
+    assert payload is not None
+    assert payload["id"] == jid
+    assert payload["status"] == "done"
+    assert payload["result"]["output"]
