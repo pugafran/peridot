@@ -99,3 +99,65 @@ def test_gui_api_job_sse_emits_json_event(monkeypatch):
     assert payload["id"] == jid
     assert payload["status"] == "done"
     assert payload["result"]["output"]
+
+
+def test_gui_pack_output_path_directory_semantics(tmp_path, monkeypatch):
+    """Windows-first UX: output can be a directory (or end with a separator).
+
+    We test this end-to-end via /api/pack by intercepting the arguments passed
+    to the background job launcher.
+    """
+
+    import peridot_gui
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    captured = {}
+
+    def fake_launch_job(job, peridot_args):
+        captured["args"] = list(peridot_args)
+        job.status = "done"
+        job.result = {"output": "(fake)"}
+        job.finished_ts = time.time()
+
+    monkeypatch.setattr(peridot_gui, "_launch_job", fake_launch_job)
+
+    client = _mk_app_and_client()
+
+    # 1) Existing directory path.
+    r = client.post(
+        "/api/pack",
+        json={
+            "preset": "",
+            "name": "My Bundle",
+            "paths": [str(tmp_path)],
+            "excludes": [],
+            "output": str(out_dir),
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    args = captured.get("args")
+    assert args and "--output" in args
+    out = args[args.index("--output") + 1]
+    assert out.lower().endswith(".peridot")
+    assert str(out_dir).replace("/", "\\") in out.replace("/", "\\")
+
+    # 2) Trailing separator should also be treated as directory.
+    captured.clear()
+    r = client.post(
+        "/api/pack",
+        json={
+            "preset": "",
+            "name": "My Bundle",
+            "paths": [str(tmp_path)],
+            "excludes": [],
+            "output": str(out_dir) + os.sep,
+        },
+    )
+    assert r.status_code == 200, r.text
+    args = captured.get("args")
+    out = args[args.index("--output") + 1]
+    assert out.lower().endswith(".peridot")
+    assert str(out_dir).replace("/", "\\") in out.replace("/", "\\")
