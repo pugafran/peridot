@@ -68,6 +68,43 @@ def require_cryptography():
         raise SystemExit(1)
     return AESGCM, InvalidTag
 
+
+def require_rich(feature: str = "") -> None:
+    """Fail fast (with a helpful message) when Rich-backed UI is required.
+
+    Some Peridot commands intentionally avoid importing Rich at import time so
+    that lightweight operations (e.g. --help/--version and JSON modes) can run
+    in constrained environments.
+
+    For interactive / TUI-ish commands we want a clear error instead of a
+    confusing "NoneType is not callable" when Progress/Table/Panel are absent.
+    """
+
+    if RICH_AVAILABLE:
+        return
+
+    hint = venv_activation_hint()
+    runtime = python_runtime_hint()
+    pip_hint = install_hint(".")
+
+    extra_lines: list[str] = []
+    if runtime:
+        extra_lines.append(runtime)
+    if hint:
+        extra_lines.append(hint)
+
+    suffix = f" ({feature})" if feature else ""
+
+    print(
+        tr("Error: falta la dependencia 'rich'.")
+        + suffix
+        + " "
+        + trf("Instalala con '{cmd}'.", cmd=pip_hint)
+        + (("\n" + "\n".join(extra_lines)) if extra_lines else ""),
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
 try:
     import zstandard as zstd
 except ModuleNotFoundError:
@@ -2824,6 +2861,13 @@ def build_manifest(args, files: list[dict], source_paths: list[str]) -> dict:
 
 
 def print_banner() -> None:
+    # Keep this safe when Rich isn't available so even constrained environments
+    # can still show a minimal banner (or at least not crash).
+    if (not RICH_AVAILABLE) or Panel is None or Text is None or Align is None:
+        console.print(f"PERIDOT v{APP_VERSION}")
+        console.print(tr("Bundles portables de configuracion para humanos"))
+        return
+
     title = Text("PERIDOT", style="bold bright_green")
     subtitle = Text(tr("Bundles portables de configuracion para humanos"), style="italic cyan")
     panel = Panel(
@@ -3229,6 +3273,7 @@ def cmd_keygen(args) -> None:
 
 def cmd_pack(args) -> None:
     if not getattr(args, "json", False):
+        require_rich("pack")
         print_banner()
     args.exclude = normalize_excludes(getattr(args, "exclude", []))
     args.notes = getattr(args, "notes", "")
@@ -4514,6 +4559,7 @@ def cmd_delete(args) -> None:
     if not packages:
         die("No hay paquetes para eliminar.")
     if not args.yes and sys.stdin.isatty():
+        require_rich("delete")
         render_local_bundle_table()
         if not Confirm.ask(f"Delete {len(packages)} package(s)?", default=False):
             console.print(f"[yellow]{tr('Operacion cancelada.')}[/yellow]")
@@ -4527,6 +4573,7 @@ def cmd_delete(args) -> None:
 
 
 def cmd_rekey(args) -> None:
+    require_rich("rekey")
     packages = resolve_package_list(args.packages, use_local=args.all_local)
     if not packages:
         die("No hay paquetes para migrar. Pasa paquetes o usa --all-local.")
@@ -4574,6 +4621,7 @@ def cmd_manifest(args) -> None:
 
 
 def cmd_catalog(args) -> None:
+    require_rich("catalog")
     print_banner()
     os_name = normalize_os_name(args.platform or normalize_os_name())
     shell_name = args.shell or detect_shell()
@@ -4584,6 +4632,7 @@ def cmd_catalog(args) -> None:
 
 
 def cmd_ui(args) -> None:
+    require_rich("ui")
     while True:
         console.clear()
         print_banner()
