@@ -285,8 +285,12 @@ def _compute_output_path(*, name: str, output_raw: str | None) -> str:
 
 
 def _launch_job(job: Job, peridot_args: list[str]) -> None:
-    job.status = "running"
-    job.started_ts = time.time()
+    # Jobs are mutated from background threads while the API is serving status
+    # and SSE events. Keep updates under a lock so we don't expose partially
+    # updated state (Windows-first: helps avoid flaky UI behavior under load).
+    with _JOBS_LOCK:
+        job.status = "running"
+        job.started_ts = time.time()
 
     cmd = [*_peridot_cmd_prefix(), *peridot_args]
 
@@ -358,8 +362,9 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
                     if lines:
                         try:
                             evt = json.loads(lines[-1])
-                            job.result = job.result or {}
-                            job.result["progress"] = evt
+                            with _JOBS_LOCK:
+                                job.result = job.result or {}
+                                job.result["progress"] = evt
                         except Exception:
                             pass
                 except Exception:
@@ -383,11 +388,15 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
             )
 
         # Preserve any last progress event we captured via PERIDOT_PROGRESS_PATH.
-        if job.result and isinstance(job.result, dict) and "progress" in job.result:
-            try:
-                final_result["progress"] = job.result.get("progress")
-            except Exception:
-                pass
+        try:
+            with _JOBS_LOCK:
+                latest_progress = None
+                if job.result and isinstance(job.result, dict) and "progress" in job.result:
+                    latest_progress = job.result.get("progress")
+            if latest_progress is not None:
+                final_result["progress"] = latest_progress
+        except Exception:
+            pass
 
         # UX: when packing, show bundle size without the UI needing to stat paths.
         # Windows-first: always use pathlib for robust path handling.
@@ -400,13 +409,16 @@ def _launch_job(job: Job, peridot_args: list[str]) -> None:
         except Exception:
             pass
 
-        job.result = final_result
-        job.status = "done"
+        with _JOBS_LOCK:
+            job.result = final_result
+            job.status = "done"
     except Exception as exc:  # noqa: BLE001
-        job.status = "error"
-        job.error = str(exc)
+        with _JOBS_LOCK:
+            job.status = "error"
+            job.error = str(exc)
     finally:
-        job.finished_ts = time.time()
+        with _JOBS_LOCK:
+            job.finished_ts = time.time()
         # Opportunistic cleanup to keep long-running GUI sessions stable.
         _prune_jobs()
         if progress_path:
