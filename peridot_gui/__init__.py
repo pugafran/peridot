@@ -917,7 +917,10 @@ def create_app():
             _JOBS[jid] = job
         t = threading.Thread(target=_launch_job, args=(job, args), daemon=True)
         t.start()
-        return {"job_id": jid}
+        # UX: return the resolved output path immediately so the UI can show the
+        # user where the bundle will land (important on Windows where cwd can be
+        # unexpected).
+        return {"job_id": jid, "output_path": output_path}
 
     @app.get("/api/jobs/{job_id}")
     def job_status(job_id: str) -> dict[str, Any]:

@@ -559,7 +559,12 @@ async function startPackJob() {
     if (output) body.output = output;
     const r = await api('/api/pack', { method: 'POST', body: JSON.stringify(body) });
     state.pack.jobId = r.job_id;
-    $('#packRunStatus').textContent = `job ${r.job_id}`;
+    const outHint = r && r.output_path ? ` · ${r.output_path}` : '';
+    $('#packRunStatus').textContent = `job ${r.job_id}${outHint}`;
+    if (r && r.output_path) {
+      const sum = $('#packSummary');
+      if (sum) sum.textContent = `output: ${r.output_path}`;
+    }
 
     // SSE stream (fallback to polling if it fails)
     try {
