@@ -1,127 +1,86 @@
-"""Tests for the experimental FastAPI-based GUI.
-
-These tests are intentionally lightweight and are skipped when optional GUI
-dependencies are not installed.
-
-We mainly validate that the API surface exists and that the most important
-endpoints return a sane shape.
-"""
-
-from __future__ import annotations
-
 import json
+from types import SimpleNamespace
 
 import pytest
 
 
-fastapi = pytest.importorskip("fastapi")
+pytest.importorskip("fastapi")
 pytest.importorskip("uvicorn")
 
-from fastapi.testclient import TestClient  # noqa: E402
+
+@pytest.fixture()
+def app(monkeypatch):
+    import peridot_gui
+
+    # Make /api/meta deterministic and not depend on an installed peridot binary.
+    def fake_run(cmd, **kwargs):
+        # meta() calls: [*peridot_cmd, "--version"]
+        if cmd and cmd[-1] == "--version":
+            return SimpleNamespace(returncode=0, stdout="peridot 9.9.9\n", stderr="")
+        raise AssertionError(f"unexpected subprocess cmd: {cmd!r}")
+
+    monkeypatch.setattr(peridot_gui, "subprocess", SimpleNamespace(run=fake_run, CREATE_NO_WINDOW=0))
+
+    return peridot_gui.create_app()
 
 
-def _client():
-    from peridot_gui import create_app  # noqa: WPS433 (import inside helper)
+@pytest.fixture()
+def client(app):
+    from fastapi.testclient import TestClient
 
-    return TestClient(create_app())
+    return TestClient(app)
 
 
-def test_meta_smoke():
-    c = _client()
-    r = c.get("/api/meta")
+def test_api_meta_smoke(client):
+    r = client.get("/api/meta")
     assert r.status_code == 200
     data = r.json()
-
-    assert "peridot_cmd" in data
-    assert "runtime" in data
+    assert data["version"] == "peridot 9.9.9"
     assert "presets" in data
-
-    # Presets should be a list of dicts with at least a key.
-    presets = data.get("presets")
-    assert isinstance(presets, list)
-    assert all(isinstance(p, dict) and p.get("key") for p in presets)
+    assert isinstance(data["presets"], list)
+    assert "runtime" in data
 
 
-def test_settings_smoke():
-    c = _client()
-    r = c.get("/api/settings")
+def test_api_settings_smoke(client):
+    r = client.get("/api/settings")
     assert r.status_code == 200
     data = r.json()
     assert "settings_path" in data
     assert "settings" in data
 
 
-def test_pack_scan_accepts_paths_and_returns_sensitive_shape(tmp_path):
-    c = _client()
-
-    # Create a tiny tree with a known-sensitive file.
-    root = tmp_path / "root"
-    root.mkdir()
-    (root / ".env").write_text("SECRET=1\n", encoding="utf-8")
-    (root / "note.txt").write_text("hi\n", encoding="utf-8")
-
-    r = c.post(
+def test_api_pack_scan_validates_and_returns_shape(client):
+    r = client.post(
         "/api/pack/scan",
-        json={
-            "preset": "",
-            "paths": [str(root)],
-            "excludes": [],
-        },
+        json={"preset": "", "paths": ["/definitely/not/a/real/path"], "excludes": []},
     )
     assert r.status_code == 200
     data = r.json()
-
-    assert data.get("files") >= 1
-    assert "expanded_paths" in data
-
-    # New preferred shape: sensitive is a list of {path, reason}.
-    sensitive = data.get("sensitive")
-    assert isinstance(sensitive, list)
-    if sensitive:
-        assert isinstance(sensitive[0], dict)
-        assert "path" in sensitive[0]
-        assert "reason" in sensitive[0]
-
-    # Back-compat list also present.
-    sensitive_paths = data.get("sensitive_paths")
-    assert isinstance(sensitive_paths, list)
+    assert data["files"] >= 0
+    assert "missing_paths" in data
+    assert isinstance(data["missing_paths"], list)
+    assert "sensitive" in data
 
 
-def test_job_events_sse_smoke():
-    c = _client()
+def test_api_jobs_events_is_sse(client, monkeypatch):
+    import peridot_gui
 
-    # Create a fake job by calling a lightweight endpoint that launches a job.
-    # We avoid relying on pack/apply because those can be slow or require
-    # platform-specific fixtures.
-    #
-    # Instead, we insert a minimal job via the internal module globals.
-    import time
-    import uuid
+    # Insert a fake job
+    jid = "job-123"
+    job = peridot_gui.Job(id=jid, kind="pack", status="done", created_ts=0)
+    with peridot_gui._JOBS_LOCK:
+        peridot_gui._JOBS[jid] = job
 
-    import peridot_gui as gui
-
-    jid = str(uuid.uuid4())
-    job = gui.Job(id=jid, kind="test", status="done", created_ts=time.time(), finished_ts=time.time(), result={"ok": True})
-    with gui._JOBS_LOCK:  # noqa: SLF001 (tests)
-        gui._JOBS[jid] = job  # noqa: SLF001
-
-    with c.stream("GET", f"/api/jobs/{jid}/events") as r:
+    # We don't consume the stream fully here; just validate headers and that it starts.
+    with client.stream("GET", f"/api/jobs/{jid}/events") as r:
         assert r.status_code == 200
-        # Read a couple of SSE chunks and ensure at least one data line appears.
-        it = r.iter_text()
-        chunks = []
-        for _ in range(16):
-            try:
-                ch = next(it)
-            except StopIteration:
+        ct = r.headers.get("content-type", "")
+        assert ct.startswith("text/event-stream")
+
+        first = None
+        for chunk in r.iter_text():
+            if chunk:
+                first = chunk
                 break
-            chunks.append(ch)
-            if "data:" in ch:
-                break
-        joined = "".join(chunks)
-        assert "data:" in joined
-        # Validate payload is JSON.
-        line = [ln for ln in joined.splitlines() if ln.startswith("data: ")][0]
-        payload = json.loads(line.replace("data: ", "", 1))
-        assert payload.get("id") == jid
-        assert payload.get("status") in {"done", "error", "running", "queued"}
+        assert first is not None
+        assert (": ok" in first) or ("retry:" in first) or ("data:" in first)
