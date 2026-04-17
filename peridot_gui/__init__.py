@@ -470,6 +470,11 @@ def create_app():
             env = dict(os.environ)
             env.setdefault("PYTHONUTF8", "1")
             env.setdefault("PYTHONIOENCODING", "utf-8")
+            try:
+                timeout_s = float(os.environ.get("PERIDOT_GUI_CLI_TIMEOUT", "10"))
+            except Exception:
+                timeout_s = 10.0
+
             p = subprocess.run(
                 [*peridot_cmd, "--version"],
                 capture_output=True,
@@ -478,6 +483,7 @@ def create_app():
                 errors="replace",
                 env=env,
                 creationflags=creationflags,
+                timeout=timeout_s,
             )
             peridot_version = (p.stdout or "").strip() if p.returncode == 0 else None
             if p.returncode != 0:
