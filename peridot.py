@@ -2334,6 +2334,27 @@ def filter_entries(entries: list[FileEntry], excludes: list[str] | None = None) 
     return filtered
 
 
+def normalize_excludes(excludes: list[str] | None) -> list[str]:
+    """Normalize --exclude inputs.
+
+    Users often pass multiple globs in a single flag (e.g. "a,b,c"). Support
+    that by splitting on commas, trimming whitespace, and dropping empties.
+    """
+
+    if not excludes:
+        return []
+
+    normalized: list[str] = []
+    for item in excludes:
+        if not item:
+            continue
+        for part in str(item).split(","):
+            part = part.strip()
+            if part:
+                normalized.append(part)
+    return normalized
+
+
 def compress_payload(raw: bytes, compression_level: int) -> bytes:
     codec = active_compression_codec()
     if codec == "zstd":
@@ -3176,7 +3197,7 @@ def cmd_keygen(args) -> None:
 def cmd_pack(args) -> None:
     if not getattr(args, "json", False):
         print_banner()
-    args.exclude = getattr(args, "exclude", [])
+    args.exclude = normalize_excludes(getattr(args, "exclude", []))
     args.notes = getattr(args, "notes", "")
     args.after_steps = getattr(args, "after_steps", [])
     args.profile = getattr(args, "profile", "")

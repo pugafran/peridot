@@ -511,6 +511,12 @@ def test_should_exclude_entry_filters_common_basenames_outside_home(tmp_path):
     assert peridot.should_exclude_entry(tmp_path / ".gitconfig") is False
 
 
+def test_normalize_excludes_splits_commas_and_trims():
+    assert peridot.normalize_excludes(["a,b", " c ", "", "d,,e"]) == ["a", "b", "c", "d", "e"]
+    assert peridot.normalize_excludes([]) == []
+    assert peridot.normalize_excludes(None) == []
+
+
 def test_collect_files_prunes_excluded_directories(monkeypatch, tmp_path):
     # Arrange a small tree where a directory should be excluded by basename.
     (tmp_path / ".cache").mkdir()
