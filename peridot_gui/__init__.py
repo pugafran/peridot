@@ -1042,8 +1042,11 @@ def create_app():
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
             "X-Content-Type-Options": "nosniff",
+            # Windows-first: some setups are picky about a charset parameter.
+            # We emit UTF-8 bytes, so advertise it explicitly.
+            "Content-Type": "text/event-stream; charset=utf-8",
         }
-        # EventSource expects exactly `text/event-stream` in some environments.
+        # EventSource expects exactly `text/event-stream` semantics.
         # Keep encoding UTF-8 by emitting bytes.
         return StreamingResponse(gen(), media_type="text/event-stream", headers=headers)
 
