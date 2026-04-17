@@ -8,7 +8,7 @@ import peridot
 
 def test_history_json_output(tmp_path: Path, capsys, monkeypatch):
     history_root = tmp_path / "history"
-    monkeypatch.setattr(peridot, "DEFAULT_HISTORY_DIR", history_root)
+    monkeypatch.setenv("PERIDOT_HISTORY_DIR", str(history_root))
 
     bundle_dir = history_root / "demo"
     bundle_dir.mkdir(parents=True)
@@ -33,7 +33,7 @@ def test_history_json_output(tmp_path: Path, capsys, monkeypatch):
 
 def test_history_human_output_no_snapshots(tmp_path: Path, capsys, monkeypatch):
     history_root = tmp_path / "history"
-    monkeypatch.setattr(peridot, "DEFAULT_HISTORY_DIR", history_root)
+    monkeypatch.setenv("PERIDOT_HISTORY_DIR", str(history_root))
 
     peridot.main(["history", "missing"])
 

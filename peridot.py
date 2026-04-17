@@ -173,6 +173,27 @@ DEFAULT_HISTORY_DIR = Path.home() / ".config" / "peridot" / "history"
 DEFAULT_SETTINGS_STORE = Path.home() / ".config" / "peridot" / "settings.json"
 
 
+def default_history_dir() -> Path:
+    """Return the effective history root directory.
+
+    Priority:
+    1) PERIDOT_HISTORY_DIR environment variable
+    2) DEFAULT_HISTORY_DIR constant
+
+    Mirrors PERIDOT_SETTINGS_PATH / PERIDOT_PROFILES_PATH so CI/tests/power users
+    can redirect history snapshots without changing code.
+    """
+
+    raw = (os.environ.get("PERIDOT_HISTORY_DIR") or "").strip()
+    if raw:
+        try:
+            expanded = os.path.expandvars(raw)
+            return Path(expanded).expanduser()
+        except Exception:
+            return DEFAULT_HISTORY_DIR
+    return DEFAULT_HISTORY_DIR
+
+
 def default_settings_store() -> Path:
     """Return the effective settings store path.
 
@@ -1495,11 +1516,12 @@ def save_settings(data: dict, settings_path: Path | None = None) -> None:
     settings_path.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def save_history_snapshot(package_path: Path, history_dir: Path = DEFAULT_HISTORY_DIR) -> Path | None:
+def save_history_snapshot(package_path: Path, history_dir: Path | None = None) -> Path | None:
     if not package_path.exists():
         return None
     bundle_name = package_path.stem
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    history_dir = history_dir or default_history_dir()
     target_dir = history_dir / bundle_name
     target_dir.mkdir(parents=True, exist_ok=True)
     snapshot_path = target_dir / f"{timestamp}.peridot"
@@ -4128,7 +4150,7 @@ def cmd_share(args) -> None:
 
 
 def cmd_history(args) -> None:
-    history_root = DEFAULT_HISTORY_DIR / args.bundle
+    history_root = default_history_dir() / args.bundle
 
     snapshots: list[dict[str, object]] = []
     if history_root.exists():
