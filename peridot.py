@@ -2097,7 +2097,22 @@ def interactive_select_config_groups(os_name: str, shell_name: str) -> list[Path
     groups = config_groups_for_os(os_name)
     selected_keys = recommended_group_keys(groups, shell_name)
 
-    if QUESTIONARY_AVAILABLE and sys.stdin.isatty():
+    # If we don't have a real interactive TTY pair, do not attempt any prompts.
+    # This avoids blocking reads from stdin when stdout is redirected (e.g. CI,
+    # piping output).
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        selected_paths: list[Path] = []
+        seen: set[Path] = set()
+        for group in groups:
+            if group.key not in selected_keys:
+                continue
+            for path in existing_paths(group.paths):
+                if path not in seen:
+                    seen.add(path)
+                    selected_paths.append(path)
+        return selected_paths
+
+    if QUESTIONARY_AVAILABLE:
         choices = []
         for group in groups:
             found = len(existing_paths(group.paths))
