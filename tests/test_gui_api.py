@@ -8,13 +8,14 @@ from pathlib import Path
 import pytest
 
 
-def test_gui_api_meta_doctor_settings_pack_scan_and_sse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_gui_api_meta_doctor_settings_pack_scan_pack_and_sse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Lightweight end-to-end checks for the experimental GUI API.
 
     This intentionally avoids running real `peridot pack`/`apply` subprocesses.
     Instead we validate:
     - /api/meta, /api/doctor, /api/settings return JSON
     - /api/pack/scan works against real filesystem inputs
+    - /api/pack wires a job and returns a resolved output path
     - SSE stream (/api/jobs/{id}/events) emits at least one event and terminates
       when the job reaches done/error.
     """
@@ -71,6 +72,63 @@ def test_gui_api_meta_doctor_settings_pack_scan_and_sse(tmp_path: Path, monkeypa
     scan = r.json()
     assert scan["files"] >= 1
     assert isinstance(scan.get("sensitive"), list)
+
+    # --- /api/pack ---
+    # Monkeypatch the job runner so we don't spawn subprocesses.
+    def _fake_launch_job(job: peridot_gui.Job, peridot_args: list[str]) -> None:
+        # Extract --output <path> if present so the UI can reveal/copy.
+        out = None
+        try:
+            if "--output" in peridot_args:
+                i = peridot_args.index("--output")
+                out = peridot_args[i + 1]
+        except Exception:
+            out = None
+
+        with peridot_gui._JOBS_LOCK:
+            job.status = "running"
+            job.started_ts = time.time()
+
+        time.sleep(0.05)
+
+        with peridot_gui._JOBS_LOCK:
+            job.status = "done"
+            job.finished_ts = time.time()
+            job.result = {"ok": True, "output": out or "bundle.peridot"}
+
+    monkeypatch.setattr(peridot_gui, "_launch_job", _fake_launch_job)
+
+    # Pick a real preset key so the endpoint can rely on Peridot's preset
+    # resolution.
+    import peridot as peridot_mod  # type: ignore
+
+    preset_key = next(iter(getattr(peridot_mod, "PRESET_LIBRARY", {}).keys()), None)
+    assert preset_key, "expected at least one preset"
+
+    r = client.post(
+        "/api/pack",
+        json={
+            "preset": preset_key,
+            "name": "gui-pack-test",
+            "paths": [],
+            "excludes": [],
+            "output": "gui-pack-test.peridot",
+        },
+    )
+    assert r.status_code == 200
+    pack_start = r.json()
+    assert pack_start["job_id"]
+    assert "output_path" in pack_start
+
+    # Job status should become done quickly.
+    jstatus = client.get(f"/api/jobs/{pack_start['job_id']}").json()
+    for _ in range(50):
+        jstatus = client.get(f"/api/jobs/{pack_start['job_id']}").json()
+        if jstatus.get("status") in {"done", "error"}:
+            break
+        time.sleep(0.05)
+    assert jstatus["status"] == "done"
+    assert (jstatus.get("result") or {}).get("output")
 
     # --- SSE: /api/jobs/{id}/events ---
     jid = "test-job-1"
