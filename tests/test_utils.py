@@ -646,10 +646,20 @@ def test_filter_sensitive_entries_keeps_when_yes_even_without_tty(tmp_path):
 
 def test_detect_system_language_hint_prefers_env(monkeypatch):
     monkeypatch.setenv("LC_ALL", "es_ES.UTF-8")
+    monkeypatch.delenv("LC_MESSAGES", raising=False)
     monkeypatch.delenv("LANG", raising=False)
     monkeypatch.delenv("LANGUAGE", raising=False)
 
     assert peridot.detect_system_language_hint() == "es"
+
+
+def test_detect_system_language_hint_uses_lc_messages(monkeypatch):
+    monkeypatch.delenv("LC_ALL", raising=False)
+    monkeypatch.setenv("LC_MESSAGES", "en_GB.UTF-8")
+    monkeypatch.delenv("LANG", raising=False)
+    monkeypatch.delenv("LANGUAGE", raising=False)
+
+    assert peridot.detect_system_language_hint() == "en"
 
 
 def test_detect_runtime_language_supports_auto(monkeypatch):

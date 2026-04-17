@@ -581,6 +581,7 @@ def detect_system_language_hint() -> str | None:
 
     candidates = [
         os.environ.get("LC_ALL"),
+        os.environ.get("LC_MESSAGES"),
         os.environ.get("LANG"),
         os.environ.get("LANGUAGE"),
     ]
