@@ -265,6 +265,7 @@ DEFAULT_EXCLUDES = {
     ".DS_Store",
     ".Trash",
     ".cache",
+    ".direnv",
     ".git",
     ".hg",
     ".svn",
