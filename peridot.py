@@ -1819,6 +1819,8 @@ def should_exclude_entry(path: Path) -> bool:
 def collect_files(
     paths: list[Path],
     progress_callback: Callable[[int, Path], None] | None = None,
+    *,
+    warn: bool = True,
 ) -> list[FileEntry]:
     entries: list[FileEntry] = []
     seen: set[str] = set()
@@ -1827,10 +1829,12 @@ def collect_files(
     for source in paths:
         expanded = source.expanduser()
         if not expanded.exists():
-            console.print(f"[yellow]Aviso:[/yellow] se omite {expanded}, no existe.")
+            if warn:
+                console.print(f"[yellow]Aviso:[/yellow] se omite {expanded}, no existe.")
             continue
         if expanded.is_symlink():
-            console.print(f"[yellow]Aviso:[/yellow] se omite {expanded}, es un symlink.")
+            if warn:
+                console.print(f"[yellow]Aviso:[/yellow] se omite {expanded}, es un symlink.")
             continue
         if should_exclude_entry(expanded):
             continue
@@ -2816,7 +2820,11 @@ def cmd_pack(args) -> None:
                 progress_emit({"type": "scan_progress", "files": count, "current": str(current_path)})
 
         entries = filter_entries(
-            collect_files(paths, progress_callback=update_scan_json if progress_emit else None),
+            collect_files(
+                paths,
+                progress_callback=update_scan_json if progress_emit else None,
+                warn=False,
+            ),
             args.exclude,
         )
         if progress_emit:

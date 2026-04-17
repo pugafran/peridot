@@ -84,6 +84,39 @@ def test_pack_scan_and_pack_job(monkeypatch, tmp_path: Path):
     assert Path(last["result"]["output"]).exists()
 
 
+def test_pack_job_accepts_preset_without_paths(monkeypatch, tmp_path: Path):
+    c = _client(monkeypatch)
+
+    meta = c.get("/api/meta")
+    assert meta.status_code == 200
+    presets = meta.json().get("presets") or []
+    assert presets, "expected presets in /api/meta"
+
+    preset_key = presets[0]["key"]
+
+    out = tmp_path / "out.peridot"
+    r = c.post(
+        "/api/pack",
+        json={"name": "bundle", "paths": [], "preset": preset_key, "excludes": [], "output": str(out)},
+    )
+    assert r.status_code == 200
+    job_id = r.json()["job_id"]
+
+    deadline = time.time() + 25
+    last = None
+    while time.time() < deadline:
+        st = c.get(f"/api/jobs/{job_id}")
+        assert st.status_code == 200
+        last = st.json()
+        if last["status"] in {"done", "error"}:
+            break
+        time.sleep(0.2)
+
+    assert last is not None
+    assert last["status"] == "done", f"job failed: {last}"
+    assert Path(last["result"]["output"]).exists()
+
+
 def test_sse_stream_starts(monkeypatch, tmp_path: Path):
     c = _client(monkeypatch)
 
