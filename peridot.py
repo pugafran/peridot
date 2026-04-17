@@ -4191,6 +4191,12 @@ def cmd_doctor(args) -> None:
     if getattr(args, "json", False):
         print(json.dumps([{"check": name, "status": status, "detail": detail} for name, status, detail in rows], indent=2))
         return
+    if not RICH_AVAILABLE or Table is None:
+        # Keep `doctor` usable in minimal Python environments (no Rich).
+        for name, status, detail in rows:
+            print(f"{name}: {status} - {detail}")
+        return
+
     table = Table(title=tr("Doctor"), header_style="bold cyan")
     table.add_column(tr("Check"))
     table.add_column(tr("Status"))
