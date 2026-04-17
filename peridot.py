@@ -3349,6 +3349,7 @@ def cmd_pack(args) -> None:
                 progress_ctx.__exit__(None, None, None)
 
         files_manifest.sort(key=lambda item: item["path"])
+        skipped_files.sort(key=lambda item: (item.get("path") or ""))
         manifest = build_manifest(args, files_manifest, [str(path) for path in paths])
         if skipped_files:
             manifest.setdefault("bundle", {})
