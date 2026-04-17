@@ -881,6 +881,19 @@ async function boot() {
     toastKey('toast.preset', { preset: state.preset });
   });
 
+  // Wizard UX: allow clicking step pills to jump back (never forward).
+  // This is especially helpful on Windows where path/preset tweaks are common.
+  $$('#packStepPills .step-pill').forEach((el) => {
+    el.addEventListener('click', () => {
+      if (state.pack.scanning) return;
+      const cur = Number($('#packStep').value);
+      const target = Number(el.dataset.step || '0');
+      if (!target || target > cur) return;
+      $('#packStep').value = String(target);
+      renderPackWizard();
+    });
+  });
+
   $('#packPrev').addEventListener('click', () => {
     if (state.pack.scanning) return;
     const v = Math.max(1, Number($('#packStep').value) - 1);
