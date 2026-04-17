@@ -195,6 +195,26 @@ def default_settings_store() -> Path:
             return DEFAULT_SETTINGS_STORE
     return DEFAULT_SETTINGS_STORE
 
+
+def default_profile_store() -> Path:
+    """Return the effective profiles store path.
+
+    Priority:
+    1) PERIDOT_PROFILES_PATH environment variable
+    2) DEFAULT_PROFILE_STORE constant
+
+    Matches the behavior of PERIDOT_SETTINGS_PATH for settings.
+    """
+
+    raw = (os.environ.get("PERIDOT_PROFILES_PATH") or "").strip()
+    if raw:
+        try:
+            expanded = os.path.expandvars(raw)
+            return Path(expanded).expanduser()
+        except Exception:
+            return DEFAULT_PROFILE_STORE
+    return DEFAULT_PROFILE_STORE
+
 DEFAULT_EXCLUDES = {
     ".DS_Store",
     ".Trash",
@@ -1420,7 +1440,8 @@ def write_key(key_path: Path, key: bytes) -> None:
         pass
 
 
-def load_profiles(profile_path: Path = DEFAULT_PROFILE_STORE) -> dict:
+def load_profiles(profile_path: Path | None = None) -> dict:
+    profile_path = profile_path or default_profile_store()
     if not profile_path.exists():
         return {}
     try:
@@ -1432,7 +1453,8 @@ def load_profiles(profile_path: Path = DEFAULT_PROFILE_STORE) -> dict:
     return raw
 
 
-def save_profiles(data: dict, profile_path: Path = DEFAULT_PROFILE_STORE) -> None:
+def save_profiles(data: dict, profile_path: Path | None = None) -> None:
+    profile_path = profile_path or default_profile_store()
     ensure_parent(profile_path)
     profile_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -3985,7 +4007,8 @@ def cmd_doctor(args) -> None:
     rows.append(("key", "ok" if args.key.exists() else "missing", str(args.key)))
     bundles = discover_local_bundles()
     rows.append(("bundles", "ok" if bundles else "empty", str(len(bundles))))
-    rows.append(("profiles", "ok" if DEFAULT_PROFILE_STORE.exists() else "empty", str(DEFAULT_PROFILE_STORE)))
+    profiles_store = default_profile_store()
+    rows.append(("profiles", "ok" if profiles_store.exists() else "empty", str(profiles_store)))
     settings = load_settings()
     settings_store = default_settings_store()
     rows.append(("settings", "ok" if settings_store.exists() else "default", str(settings_store)))
