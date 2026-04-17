@@ -743,6 +743,30 @@ def create_app():
         slug = "".join(out).strip("-._")
         return slug or "bundle"
 
+    def _default_output_dir() -> Path:
+        """Pick a sensible default output directory.
+
+        Usability note (Windows-first): when the GUI is launched from a shortcut
+        / Start Menu, the process cwd can be something like System32, which is a
+        terrible default for writing files.
+
+        We prefer:
+        - ~/Downloads if it exists
+        - else the user's home directory
+        - else the current working directory
+        """
+
+        try:
+            home = Path.home()
+            dl = home / "Downloads"
+            if dl.exists() and dl.is_dir():
+                return dl
+            if home.exists() and home.is_dir():
+                return home
+        except Exception:
+            pass
+        return Path.cwd()
+
     def _compute_output_path(*, name: str, output_raw: str | None) -> str:
         """Compute a safe output bundle path.
 
@@ -756,7 +780,7 @@ def create_app():
         suggested_name = f"{_slug(name)}.peridot"
 
         if not output_raw:
-            return _expand_path(suggested_name)
+            return str((_default_output_dir() / suggested_name))
 
         raw = str(output_raw)
         expanded = _expand_path(raw)
