@@ -997,6 +997,14 @@ async function boot() {
           method: 'POST',
           body: JSON.stringify({ preset: state.preset, paths: state.pack.paths, excludes: (state.pack.userExcludes || []) })
         });
+
+        // If the user left paths empty and relied on the preset, surface the
+        // resolved preset paths back into the wizard so step 2 isn't a confusing
+        // empty textarea (Windows-first UX: make it obvious what will be packed).
+        if ((!state.pack.paths || !state.pack.paths.length) && state.pack.scan && Array.isArray(state.pack.scan.paths)) {
+          state.pack.paths = state.pack.scan.paths;
+        }
+
         // initialize sensitive allow map (default exclude)
         state.pack.sensitiveAllow = {};
         const sRaw = state.pack.scan.sensitive || [];
