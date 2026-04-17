@@ -72,8 +72,15 @@ const state = {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 async function api(path, opts={}) {
+  // Windows-first: avoid forcing a JSON Content-Type on GET requests.
+  // Some proxies/middleware behave oddly when Content-Type is set with no body.
+  const headers = { 'Accept': 'application/json', ...(opts.headers||{}) };
+  if (opts && Object.prototype.hasOwnProperty.call(opts, 'body')) {
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+  }
+
   const r = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...(opts.headers||{}) },
+    headers,
     ...opts,
   });
 
@@ -568,7 +575,7 @@ async function startPackJob() {
 
     // SSE stream (fallback to polling if it fails)
     try {
-      const es = new EventSource(`/api/jobs/${state.pack.jobId}/events`);
+      const es = new EventSource(new URL(`/api/jobs/${state.pack.jobId}/events`, window.location.href).toString());
       await new Promise((resolve) => {
         es.onmessage = (ev) => {
           const j = JSON.parse(ev.data);
@@ -875,7 +882,7 @@ async function boot() {
 
       // SSE stream (fallback to polling if it fails)
       try {
-        const es = new EventSource(`/api/jobs/${r.job_id}/events`);
+        const es = new EventSource(new URL(`/api/jobs/${r.job_id}/events`, window.location.href).toString());
         await new Promise((resolve) => {
           es.onmessage = (ev) => {
             const j = JSON.parse(ev.data);
