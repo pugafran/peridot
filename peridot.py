@@ -173,6 +173,27 @@ DEFAULT_HISTORY_DIR = Path.home() / ".config" / "peridot" / "history"
 DEFAULT_SETTINGS_STORE = Path.home() / ".config" / "peridot" / "settings.json"
 
 
+def default_key_path() -> Path:
+    """Return the effective key path.
+
+    Priority:
+    1) PERIDOT_KEY_PATH environment variable
+    2) DEFAULT_KEY constant
+
+    Mirrors PERIDOT_SETTINGS_PATH / PERIDOT_PROFILES_PATH so CI/tests/power users
+    can redirect the key location without needing per-command flags.
+    """
+
+    raw = (os.environ.get("PERIDOT_KEY_PATH") or "").strip()
+    if raw:
+        try:
+            expanded = os.path.expandvars(raw)
+            return Path(expanded).expanduser()
+        except Exception:
+            return DEFAULT_KEY
+    return DEFAULT_KEY
+
+
 def default_history_dir() -> Path:
     """Return the effective history root directory.
 
@@ -3989,7 +4010,7 @@ def cmd_init(args) -> None:
     if not json_mode:
         print_banner()
 
-    key_path: Path = getattr(args, "key", DEFAULT_KEY)
+    key_path: Path = getattr(args, "key", default_key_path())
     settings_path: Path = default_settings_store()
 
     # Ensure key exists.
@@ -4577,8 +4598,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--key",
         type=Path,
-        default=DEFAULT_KEY,
-        help=trf("Ruta de la clave AES-GCM (por defecto: {path})", path=DEFAULT_KEY),
+        default=default_key_path(),
+        help=trf(
+            "Ruta de la clave AES-GCM (por defecto: {path}; override: PERIDOT_KEY_PATH)",
+            path=DEFAULT_KEY,
+        ),
     )
     parser.add_argument(
         "-V",
