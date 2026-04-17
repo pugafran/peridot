@@ -651,6 +651,17 @@ async function boot() {
       const key = el.getAttribute('data-i18n');
       if (key) el.textContent = t(state.lang, key);
     });
+
+    // Pack output hint (Windows-first): explain default directory behavior.
+    try {
+      const hint = $('#packOutputHint');
+      const d = String(state.meta.default_output_dir || '').trim();
+      if (hint && d) {
+        hint.textContent = `If you enter only a filename, Peridot will write it to: ${d}`;
+      }
+    } catch {
+      // ignore
+    }
   } catch {
     // ok
   }

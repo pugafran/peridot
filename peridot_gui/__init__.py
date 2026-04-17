@@ -513,6 +513,10 @@ def create_app():
                 "port": gui_port,
                 "base_url": f"http://{gui_host}:{gui_port}",
             },
+            # Usability (Windows-first): a safe default output directory so the
+            # UI can explain where bundles will land when the user provides only
+            # a filename.
+            "default_output_dir": str(_default_output_dir()),
             "runtime": {
                 "os_name": os.name,
                 "sys_platform": sys.platform,
