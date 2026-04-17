@@ -137,16 +137,27 @@ def _run_peridot_json(args: list[str]) -> dict[str, Any]:
     env.setdefault("PYTHONUTF8", "1")
     env.setdefault("PYTHONIOENCODING", "utf-8")
 
+    # Safety (Windows-first): a hung subprocess would freeze the GUI endpoint.
+    # Keep a configurable timeout with a conservative default.
+    try:
+        timeout_s = float(os.environ.get("PERIDOT_GUI_CLI_TIMEOUT", "60"))
+    except Exception:
+        timeout_s = 60.0
+
     # Windows-friendly: force a stable encoding for JSON output.
-    p = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=env,
-        creationflags=creationflags,
-    )
+    try:
+        p = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+            creationflags=creationflags,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"peridot command timed out after {timeout_s:.0f}s: {cmd}") from exc
     if p.returncode != 0:
         raise RuntimeError((p.stderr or p.stdout or "").strip() or f"peridot exited {p.returncode}")
 
