@@ -187,7 +187,9 @@ def default_settings_store() -> Path:
     raw = (os.environ.get("PERIDOT_SETTINGS_PATH") or "").strip()
     if raw:
         try:
-            return Path(raw).expanduser()
+            # Allow $VARS / %VARS% in addition to ~ expansion.
+            expanded = os.path.expandvars(raw)
+            return Path(expanded).expanduser()
         except Exception:
             # Fall back to the default if the env var is malformed.
             return DEFAULT_SETTINGS_STORE
