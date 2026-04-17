@@ -693,6 +693,8 @@ def create_app():
             "preset": preset or None,
             "paths": paths,
             "expanded_paths": expanded,
+            # Paths that actually contributed to the scan (exist + not symlink).
+            "existing_paths": [str(p) for p in existing],
             "missing_paths": missing,
             "skipped_paths": skipped,
             "excludes": excludes,
@@ -1010,8 +1012,9 @@ def create_app():
             "X-Accel-Buffering": "no",
             "X-Content-Type-Options": "nosniff",
         }
-        # Include charset for consistent decoding on Windows browsers.
-        return StreamingResponse(gen(), media_type="text/event-stream; charset=utf-8", headers=headers)
+        # EventSource expects exactly `text/event-stream` in some environments.
+        # Keep encoding UTF-8 by emitting bytes.
+        return StreamingResponse(gen(), media_type="text/event-stream", headers=headers)
 
     return app
 
