@@ -14,3 +14,15 @@ def test_install_hint_translation_is_dynamic():
         )
     finally:
         peridot.set_current_language(previous)
+
+
+def test_exported_label_is_localized():
+    previous = peridot.CURRENT_LANGUAGE
+    try:
+        peridot.set_current_language("en")
+        assert peridot.tr("Exportado") == "Exported"
+
+        peridot.set_current_language("es")
+        assert peridot.tr("Exportado") == "Exportado"
+    finally:
+        peridot.set_current_language(previous)

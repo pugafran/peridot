@@ -497,6 +497,7 @@ TRANSLATIONS = {
         "subiendo ventana activa {previous} -> {current} ({label}).": "raising active window {previous} -> {current} ({label}).",
         "bajando ventana activa {previous} -> {current} ({label}).": "lowering active window {previous} -> {current} ({label}).",
         "Created {output}": "Created {output}",
+        "Exportado": "Exported",
         "Previous snapshot saved to {path}": "Previous snapshot saved to {path}",
         "Show file list?": "Show file list?",
         "Show manifest JSON?": "Show manifest JSON?",
@@ -4363,7 +4364,7 @@ def cmd_share(args) -> None:
 
     if args.output:
         args.output.write_text(output)
-        console.print(f"[bold green]Exported[/bold green] {args.output}")
+        console.print(f"[bold green]{tr('Exportado')}[/bold green] {args.output}")
     else:
         print(output, end="")
 
