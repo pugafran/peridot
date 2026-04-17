@@ -18,9 +18,24 @@ def test_should_check_for_updates_respects_interval(monkeypatch):
     }
 
     monkeypatch.delenv("PERIDOT_UPDATE_CHECK", raising=False)
+    monkeypatch.delenv("PERIDOT_UPDATE_CHECK_INTERVAL_HOURS", raising=False)
 
     assert peridot.should_check_for_updates(settings, now_ts=100) is False
     assert peridot.should_check_for_updates(settings, now_ts=100 + 24 * 3600) is True
+
+
+def test_should_check_for_updates_env_interval_override(monkeypatch):
+    settings = {
+        "update_check_enabled": True,
+        "update_check_last_ts": 100,
+        "update_check_interval_hours": 24,
+    }
+
+    monkeypatch.delenv("PERIDOT_UPDATE_CHECK", raising=False)
+    monkeypatch.setenv("PERIDOT_UPDATE_CHECK_INTERVAL_HOURS", "1")
+
+    assert peridot.should_check_for_updates(settings, now_ts=100) is False
+    assert peridot.should_check_for_updates(settings, now_ts=100 + 3600) is True
 
 
 def test_should_check_for_updates_env_can_disable(monkeypatch):

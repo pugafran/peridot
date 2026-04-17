@@ -898,7 +898,15 @@ def should_check_for_updates(settings: dict, *, now_ts: int | None = None) -> bo
 
     now = int(now_ts if now_ts is not None else time.time())
     last = int(settings.get("update_check_last_ts") or 0)
-    interval_h = sanitize_update_check_interval_hours(settings.get("update_check_interval_hours"))
+
+    # Power-user / CI override: allow tuning the interval without touching the
+    # persisted settings store.
+    env_interval = (os.environ.get("PERIDOT_UPDATE_CHECK_INTERVAL_HOURS") or "").strip()
+    if env_interval:
+        interval_h = sanitize_update_check_interval_hours(env_interval)
+    else:
+        interval_h = sanitize_update_check_interval_hours(settings.get("update_check_interval_hours"))
+
     return (now - last) >= (interval_h * 3600)
 
 
