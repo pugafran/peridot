@@ -818,7 +818,37 @@ async function boot() {
       toastKey('toast.applyRunFailed', { err: 'token mismatch' }, 'error');
       return;
     }
+
+    const applyRenderJob = (j) => {
+      $('#applyOut').textContent = JSON.stringify(j, null, 2);
+
+      const prog = j.result && j.result.progress ? j.result.progress : null;
+      const pct = (prog && typeof prog.percent === 'number') ? prog.percent : null;
+      if (pct !== null) {
+        $('#applyProgressBar').style.width = `${Math.max(0, Math.min(100, pct))}%`;
+        const cur = prog.current ? ` · ${clampStr(String(prog.current).replace(/\\/g,'/'), 54)}` : '';
+        $('#applySummary').textContent = `${pct}%${cur}`;
+      } else {
+        // best-effort: show activity
+        if (j.status === 'running') $('#applyProgressBar').style.width = '50%';
+      }
+
+      if (j.status === 'done') {
+        $('#applySummary').textContent = 'done';
+        $('#applyProgressBar').style.width = '100%';
+      } else if (j.status === 'error') {
+        $('#applySummary').textContent = `error: ${j.error || ''}`;
+        $('#applyProgressBar').style.width = '100%';
+      }
+
+      if (j.status === 'done' || j.status === 'error') {
+        $('#applyStatus').textContent = j.status;
+      }
+    };
+
     $('#applyStatus').textContent = 'applying…';
+    $('#applyProgressBar').style.width = '20%';
+
     try {
       const packagePath = ($('#applyPath').value || '').trim();
       const target = ($('#applyTarget').value || '').trim();
@@ -826,38 +856,33 @@ async function boot() {
         method: 'POST',
         body: JSON.stringify({ package: packagePath, target, apply_token: token })
       });
-      const es = new EventSource(`/api/jobs/${r.job_id}/events`);
-      es.onmessage = (ev) => {
-        const j = JSON.parse(ev.data);
-        $('#applyOut').textContent = JSON.stringify(j, null, 2);
 
-        const prog = j.result && j.result.progress ? j.result.progress : null;
-        const pct = (prog && typeof prog.percent === 'number') ? prog.percent : null;
-        if (pct !== null) {
-          $('#applyProgressBar').style.width = `${Math.max(0, Math.min(100, pct))}%`;
-          const cur = prog.current ? ` · ${clampStr(String(prog.current).replace(/\\/g,'/'), 54)}` : '';
-          $('#applySummary').textContent = `${pct}%${cur}`;
-        } else {
-          // best-effort: show activity
-          if (j.status === 'running') $('#applyProgressBar').style.width = '50%';
-        }
+      // SSE stream (fallback to polling if it fails)
+      try {
+        const es = new EventSource(`/api/jobs/${r.job_id}/events`);
+        await new Promise((resolve) => {
+          es.onmessage = (ev) => {
+            const j = JSON.parse(ev.data);
+            applyRenderJob(j);
+            if (j.status === 'done' || j.status === 'error') { es.close(); resolve(); }
+          };
+          es.onerror = () => {
+            es.close();
+            resolve();
+          };
+        });
+      } catch {
+        // ignore
+      }
 
-        if (j.status === 'done') {
-          $('#applySummary').textContent = 'done';
-          $('#applyProgressBar').style.width = '100%';
-        } else if (j.status === 'error') {
-          $('#applySummary').textContent = `error: ${j.error || ''}`;
-          $('#applyProgressBar').style.width = '100%';
-        }
-
-        if (j.status === 'done' || j.status === 'error') {
-          $('#applyStatus').textContent = j.status;
-          es.close();
-        }
-      };
-      es.onerror = () => {
-        es.close();
-      };
+      // If SSE didn't finish the job (proxy buffering / blocked EventSource), poll.
+      // This is surprisingly common on locked-down Windows setups.
+      while (true) {
+        const j = await api(`/api/jobs/${r.job_id}`);
+        applyRenderJob(j);
+        if (j.status === 'done' || j.status === 'error') break;
+        await sleep(900);
+      }
     } catch (e) {
       $('#applyStatus').textContent = 'error';
       toastKey('toast.applyRunFailed', { err: String(e) }, 'error');
