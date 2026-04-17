@@ -529,7 +529,10 @@ def create_app():
             presets = []
 
         gui_host = os.environ.get("PERIDOT_GUI_HOST", "127.0.0.1")
-        gui_port = int(os.environ.get("PERIDOT_GUI_PORT", "8844"))
+        try:
+            gui_port = int(os.environ.get("PERIDOT_GUI_PORT", "8844"))
+        except Exception:
+            gui_port = 8844
 
         return {
             "version": peridot_version,
@@ -1036,7 +1039,10 @@ def main() -> None:
         raise SystemExit(1)
 
     host = os.environ.get("PERIDOT_GUI_HOST", "127.0.0.1")
-    port = int(os.environ.get("PERIDOT_GUI_PORT", "8844"))
+    try:
+        port = int(os.environ.get("PERIDOT_GUI_PORT", "8844"))
+    except Exception:
+        port = 8844
     uvicorn.run("peridot_gui:create_app", factory=True, host=host, port=port, reload=False)
 
 
