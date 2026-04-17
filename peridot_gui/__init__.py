@@ -662,9 +662,10 @@ def create_app():
             t = target
             try:
                 if t.exists() and t.is_file():
-                    # Explorer expects: explorer.exe /select,"C:\\path with spaces\\file"
-                    # Pass it as a *single* argument so Explorer parses it.
-                    subprocess.Popen(["explorer.exe", f"/select,\"{str(t)}\""])
+                    # Explorer supports: explorer.exe /select, C:\path\file
+                    # When using subprocess with a list of args, avoid embedding
+                    # extra quotes in the argument (Explorer can misparse it).
+                    subprocess.Popen(["explorer.exe", "/select,", str(t)])
                 else:
                     subprocess.Popen(["explorer.exe", str(t if t.is_dir() else t.parent)])
             except Exception:
