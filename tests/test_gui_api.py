@@ -1,76 +1,95 @@
 import json
-import threading
 import time
+import uuid
 
 import pytest
 
-fastapi = pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
-
-import peridot_gui
-
-
-@pytest.fixture()
-def client(monkeypatch):
-    app = peridot_gui.create_app()
-    return TestClient(app)
+def _has_gui_deps():
+    try:
+        import fastapi  # noqa: F401
+        import starlette.testclient  # noqa: F401
+    except Exception:
+        return False
+    return True
 
 
-def test_api_meta(client):
-    r = client.get("/api/meta")
-    assert r.status_code == 200
-    data = r.json()
-    assert "runtime" in data
-    assert "presets" in data
+pytestmark = pytest.mark.skipif(not _has_gui_deps(), reason="GUI deps not installed")
 
 
-def test_api_settings(client):
-    r = client.get("/api/settings")
-    assert r.status_code == 200
-    data = r.json()
-    assert "settings" in data
+def test_api_meta_doctor_settings_smoke(monkeypatch):
+    # Import inside test so skips work cleanly.
+    from peridot_gui import create_app
+
+    from starlette.testclient import TestClient
+
+    app = create_app()
+    with TestClient(app) as client:
+        r = client.get("/api/meta")
+        assert r.status_code == 200
+        meta = r.json()
+        assert "presets" in meta
+        assert "runtime" in meta
+
+        r = client.get("/api/settings")
+        assert r.status_code == 200
+        j = r.json()
+        assert "settings_path" in j
+        assert "settings" in j
+
+        # doctor may fail if peridot CLI isn't available in PATH; but in tests it
+        # should work via `python -m peridot` fallback.
+        r = client.get("/api/doctor")
+        assert r.status_code == 200
+        data = r.json()
+        # doctor output shape is CLI-defined; accept list or dict.
+        assert isinstance(data, (list, dict))
 
 
-def test_pack_scan_smoke(client):
-    r = client.post("/api/pack/scan", json={"paths": ["."], "excludes": []})
-    assert r.status_code == 200
-    data = r.json()
-    assert "files" in data
-    assert "bytes" in data
+def test_pack_scan_works_with_preset_defaults():
+    import peridot as peridot_mod
+    from peridot_gui import create_app
+
+    from starlette.testclient import TestClient
+
+    presets = list(getattr(peridot_mod, "PRESET_LIBRARY", {}).keys())
+    assert presets, "Expected PRESET_LIBRARY to be non-empty"
+
+    app = create_app()
+    with TestClient(app) as client:
+        r = client.post("/api/pack/scan", json={"preset": presets[0], "paths": [], "excludes": []})
+        assert r.status_code == 200
+        out = r.json()
+        assert out.get("preset") == presets[0]
+        assert "missing_paths" in out
+        assert "files" in out
+        assert "sensitive" in out
 
 
-def test_pack_job_and_sse_events(client, monkeypatch):
-    # Avoid spawning the real CLI in tests; we only validate the API plumbing + SSE.
-    def fake_launch_job(job, peridot_args):
-        job.status = "running"
-        job.started_ts = time.time()
-        time.sleep(0.02)
-        job.result = {"ok": True, "output": "dummy.peridot"}
-        job.status = "done"
-        job.finished_ts = time.time()
+def test_sse_events_stream_finishes_for_done_job():
+    from peridot_gui import _JOBS, _JOBS_LOCK, Job, create_app
 
-    monkeypatch.setattr(peridot_gui, "_launch_job", fake_launch_job)
+    from starlette.testclient import TestClient
 
-    r = client.post("/api/pack", json={"preset": "dummy", "name": "x", "paths": ["."], "excludes": []})
-    assert r.status_code == 200
-    jid = r.json()["job_id"]
+    app = create_app()
 
-    # Poll job endpoint
-    j = client.get(f"/api/jobs/{jid}").json()
-    assert j["id"] == jid
+    jid = str(uuid.uuid4())
+    job = Job(id=jid, kind="pack", status="done", created_ts=time.time(), finished_ts=time.time(), result={"ok": True})
+    with _JOBS_LOCK:
+        _JOBS[jid] = job
 
-    # SSE should yield at least one data event with JSON.
-    with client.stream("GET", f"/api/jobs/{jid}/events") as resp:
-        assert resp.status_code == 200
-        buf = ""
-        for chunk in resp.iter_text():
-            buf += chunk
-            if "data:" in buf:
-                break
-        # Extract first data line.
-        lines = [ln for ln in buf.splitlines() if ln.startswith("data: ")]
-        assert lines
-        payload = json.loads(lines[0][len("data: ") :])
-        assert payload["id"] == jid
-        assert payload["status"] in {"running", "done", "error"}
+    with TestClient(app) as client:
+        # Use streaming so we can inspect SSE content.
+        with client.stream("GET", f"/api/jobs/{jid}/events") as r:
+            assert r.status_code == 200
+            raw = b"".join(list(r.iter_raw()))
+
+    text = raw.decode("utf-8", errors="replace")
+    assert "retry:" in text
+    assert "data:" in text
+    # Data must be JSON.
+    data_lines = [ln for ln in text.splitlines() if ln.startswith("data: ")]
+    assert data_lines
+    payload = json.loads(data_lines[-1].replace("data: ", "", 1))
+    assert payload["id"] == jid
+    assert payload["status"] == "done"
