@@ -2414,6 +2414,7 @@ def _is_sensitive_path(name: str, path_str: str) -> bool:
     # Keep this list focused to avoid false positives.
     exact_names = {
         ".env",
+        ".envrc",
         ".npmrc",
         ".netrc",
         ".pypirc",
@@ -2422,6 +2423,11 @@ def _is_sensitive_path(name: str, path_str: str) -> bool:
         "authorized_keys",
     }
     if name in exact_names:
+        return True
+
+    # .env.* variants are commonly used by frameworks (e.g. .env.local, .env.production)
+    # and often contain secrets.
+    if name.startswith(".env.") and len(name) > len(".env."):
         return True
 
     # SSH config can contain host aliases, usernames, ports, proxy commands, etc.

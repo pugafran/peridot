@@ -10,6 +10,9 @@ def _entry(source_name: str, relative_path: str) -> FileEntry:
 def test_detect_sensitive_entries_flags_common_secret_files() -> None:
     entries = [
         _entry(".env", ".env"),
+        _entry(".env.local", ".env.local"),
+        _entry(".env.production", ".env.production"),
+        _entry(".envrc", ".envrc"),
         _entry(".npmrc", ".npmrc"),
         _entry("id_rsa", ".ssh/id_rsa"),
         _entry("id_ed25519", ".ssh/id_ed25519"),
