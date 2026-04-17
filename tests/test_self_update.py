@@ -69,6 +69,9 @@ def test_maybe_suggest_self_update_emits_message_when_newer(monkeypatch, capsys)
     monkeypatch.delenv("CI", raising=False)
     monkeypatch.delenv("PERIDOT_UPDATE_CHECK", raising=False)
 
+    # The update suggestion is only shown on interactive stderr.
+    monkeypatch.setattr(peridot.sys.stderr, "isatty", lambda: True)
+
     settings = {
         "update_check_enabled": True,
         "update_check_last_ts": 0,
@@ -93,6 +96,9 @@ def test_maybe_suggest_self_update_can_be_disabled_by_flag(monkeypatch, capsys):
     monkeypatch.delenv("CI", raising=False)
     monkeypatch.delenv("PERIDOT_UPDATE_CHECK", raising=False)
 
+    # Force interactive stderr so we know the silence comes from the flag.
+    monkeypatch.setattr(peridot.sys.stderr, "isatty", lambda: True)
+
     settings = {
         "update_check_enabled": True,
         "update_check_last_ts": 0,
@@ -107,6 +113,37 @@ def test_maybe_suggest_self_update_can_be_disabled_by_flag(monkeypatch, capsys):
     monkeypatch.setattr(peridot, "fetch_latest_pypi_version", lambda *a, **k: "999.0.0")
 
     args = types.SimpleNamespace(json=False, no_update_check=True)
+    peridot.maybe_suggest_self_update(args)
+
+    captured = capsys.readouterr()
+    assert (captured.err + captured.out).strip() == ""
+
+
+def test_maybe_suggest_self_update_is_silent_when_stderr_not_tty(monkeypatch, capsys):
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("PERIDOT_UPDATE_CHECK", raising=False)
+
+    # Non-interactive stderr should suppress the update hint.
+    monkeypatch.setattr(peridot.sys.stderr, "isatty", lambda: False)
+
+    settings = {
+        "update_check_enabled": True,
+        "update_check_last_ts": 0,
+        "update_check_interval_hours": 0,
+        "language": "en",
+        "compression_level": 3,
+        "jobs": 2,
+    }
+
+    monkeypatch.setattr(peridot, "load_settings", lambda *a, **k: dict(settings))
+    monkeypatch.setattr(peridot, "save_settings", lambda *a, **k: None)
+
+    def _fetch(*a, **k):
+        raise AssertionError("fetch_latest_pypi_version should not be called when stderr is not a TTY")
+
+    monkeypatch.setattr(peridot, "fetch_latest_pypi_version", _fetch)
+
+    args = types.SimpleNamespace(json=False)
     peridot.maybe_suggest_self_update(args)
 
     captured = capsys.readouterr()

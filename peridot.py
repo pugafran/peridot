@@ -960,6 +960,15 @@ def maybe_suggest_self_update(args: argparse.Namespace) -> None:
     if os.environ.get("CI"):
         return
 
+    # If stderr is not a TTY, the update prompt is likely to be noise in logs
+    # (e.g. when Peridot is used in scripts or piped workflows).
+    try:
+        if not sys.stderr.isatty():
+            return
+    except Exception:
+        # Be conservative: if we can't determine interactivity, don't print.
+        return
+
     try:
         settings = load_settings()
     except SystemExit:
