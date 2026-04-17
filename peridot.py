@@ -4670,13 +4670,14 @@ def build_parser() -> argparse.ArgumentParser:
         prog="peridot",
         description=tr("Empaqueta, inspecciona y aplica bundles de configuracion .peridot"),
     )
+    effective_default_key = default_key_path()
     parser.add_argument(
         "--key",
         type=Path,
-        default=default_key_path(),
+        default=effective_default_key,
         help=trf(
             "Ruta de la clave AES-GCM (por defecto: {path}; override: PERIDOT_KEY_PATH)",
-            path=DEFAULT_KEY,
+            path=effective_default_key,
         ),
     )
     parser.add_argument(
