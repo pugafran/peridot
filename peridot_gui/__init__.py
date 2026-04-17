@@ -771,6 +771,12 @@ def create_app():
         """Compute a safe output bundle path.
 
         Windows-first UX:
+        - If the user doesn't provide an output path, write into a sensible
+          default directory (usually ~/Downloads).
+        - If the user provides only a filename (relative, no directory
+          component), also write into the default directory.
+          (Important on Windows: GUI apps launched via shortcuts often start in
+          System32, and writing there is confusing / may fail.)
         - If the user passes a directory (existing) or a path ending in a path
           separator (e.g. "C:\\tmp\\"), write into that directory using a
           deterministic filename.
@@ -782,7 +788,24 @@ def create_app():
         if not output_raw:
             return str((_default_output_dir() / suggested_name))
 
-        raw = str(output_raw)
+        raw = str(output_raw).strip()
+        if not raw:
+            return str((_default_output_dir() / suggested_name))
+
+        # If the UI provides a simple filename (our default), treat it as living
+        # in the default output directory.
+        raw_name = None
+        try:
+            raw_p = Path(raw)
+            raw_name = raw_p.name
+            is_simple_name = (raw_p.name == raw) and (str(raw_p.parent) in {".", ""})
+        except Exception:
+            is_simple_name = False
+
+        # If it's just a filename, place it in the default output directory.
+        if is_simple_name and raw_name:
+            return str((_default_output_dir() / raw_name))
+
         expanded = _expand_path(raw)
         p = Path(expanded)
 
