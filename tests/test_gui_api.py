@@ -1,86 +1,130 @@
 import json
-from types import SimpleNamespace
+import os
+import sys
+import time
+from pathlib import Path
 
 import pytest
 
 
-pytest.importorskip("fastapi")
-pytest.importorskip("uvicorn")
+def _fastapi_available() -> bool:
+    try:
+        import fastapi  # noqa: F401
+        import starlette  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+pytestmark = pytest.mark.skipif(not _fastapi_available(), reason="GUI deps not installed")
 
 
 @pytest.fixture()
-def app(monkeypatch):
-    import peridot_gui
+def gui_client(tmp_path, monkeypatch):
+    """FastAPI client with an isolated HOME.
 
-    # Make /api/meta deterministic and not depend on an installed peridot binary.
-    def fake_run(cmd, **kwargs):
-        # meta() calls: [*peridot_cmd, "--version"]
-        if cmd and cmd[-1] == "--version":
-            return SimpleNamespace(returncode=0, stdout="peridot 9.9.9\n", stderr="")
-        raise AssertionError(f"unexpected subprocess cmd: {cmd!r}")
+    Windows-first rationale: on Windows the GUI is often launched from a shortcut
+    and cwd may be something like System32; also Peridot stores keys/settings in
+    the user's home. For tests we isolate it.
+    """
 
-    monkeypatch.setattr(peridot_gui, "subprocess", SimpleNamespace(run=fake_run, CREATE_NO_WINDOW=0))
-
-    return peridot_gui.create_app()
-
-
-@pytest.fixture()
-def client(app):
     from fastapi.testclient import TestClient
 
+    # Isolate HOME-like variables.
+    home = tmp_path / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "Downloads").mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+    # Ensure the GUI uses this repo's peridot module via the current interpreter.
+    monkeypatch.setenv("PERIDOT_EXE", f"{os.environ.get('PYTHON', sys.executable)} -m peridot")
+
+    from peridot_gui import create_app
+
+    app = create_app()
     return TestClient(app)
 
 
-def test_api_meta_smoke(client):
-    r = client.get("/api/meta")
-    assert r.status_code == 200
-    data = r.json()
-    assert data["version"] == "peridot 9.9.9"
-    assert "presets" in data
-    assert isinstance(data["presets"], list)
-    assert "runtime" in data
+def test_meta_settings_doctor(gui_client):
+    meta = gui_client.get("/api/meta")
+    assert meta.status_code == 200
+    j = meta.json()
+    assert "presets" in j
+    assert "runtime" in j
+
+    settings = gui_client.get("/api/settings")
+    assert settings.status_code == 200
+    sj = settings.json()
+    assert "settings_path" in sj
+    assert "settings" in sj
+
+    doctor = gui_client.get("/api/doctor")
+    assert doctor.status_code == 200
+    dj = doctor.json()
+    assert isinstance(dj, (dict, list))
 
 
-def test_api_settings_smoke(client):
-    r = client.get("/api/settings")
-    assert r.status_code == 200
-    data = r.json()
-    assert "settings_path" in data
-    assert "settings" in data
+def test_pack_scan_and_pack_job_sse(gui_client, tmp_path):
+    # Create a tiny file tree to scan/pack.
+    root = tmp_path / "data"
+    root.mkdir()
+    (root / "dotfile.txt").write_text("hello", encoding="utf-8")
 
-
-def test_api_pack_scan_validates_and_returns_shape(client):
-    r = client.post(
+    scan = gui_client.post(
         "/api/pack/scan",
-        json={"preset": "", "paths": ["/definitely/not/a/real/path"], "excludes": []},
+        json={"paths": [str(root / "dotfile.txt")], "preset": "", "excludes": []},
     )
-    assert r.status_code == 200
-    data = r.json()
-    assert data["files"] >= 0
-    assert "missing_paths" in data
-    assert isinstance(data["missing_paths"], list)
-    assert "sensitive" in data
+    assert scan.status_code == 200, scan.text
+    sj = scan.json()
+    assert sj["files"] >= 1
+    assert "sensitive" in sj
 
+    # Launch a real pack job.
+    r = gui_client.post(
+        "/api/pack",
+        json={
+            "name": "test-bundle",
+            "paths": [str(root / "dotfile.txt")],
+            "preset": "",
+            "excludes": [],
+            "output": "test-bundle.peridot",
+        },
+    )
+    assert r.status_code == 200, r.text
+    job_id = r.json()["job_id"]
+    assert job_id
 
-def test_api_jobs_events_is_sse(client, monkeypatch):
-    import peridot_gui
-
-    # Insert a fake job
-    jid = "job-123"
-    job = peridot_gui.Job(id=jid, kind="pack", status="done", created_ts=0)
-    with peridot_gui._JOBS_LOCK:
-        peridot_gui._JOBS[jid] = job
-
-    # We don't consume the stream fully here; just validate headers and that it starts.
-    with client.stream("GET", f"/api/jobs/{jid}/events") as r:
-        assert r.status_code == 200
-        ct = r.headers.get("content-type", "")
-        assert ct.startswith("text/event-stream")
-
-        first = None
-        for chunk in r.iter_text():
-            if chunk:
-                first = chunk
+    # Consume SSE until we see terminal status (or stream ends).
+    seen_terminal = False
+    with gui_client.stream("GET", f"/api/jobs/{job_id}/events") as s:
+        assert s.status_code == 200
+        for raw in s.iter_lines():
+            if not raw:
+                continue
+            line = raw.decode("utf-8") if isinstance(raw, (bytes, bytearray)) else str(raw)
+            if not line.startswith("data: "):
+                continue
+            payload = json.loads(line[len("data: ") :])
+            if payload.get("status") in {"done", "error"}:
+                seen_terminal = True
                 break
-        assert first is not None
-        assert (": ok" in first) or ("retry:" in first) or ("data:" in first)
+    assert seen_terminal
+
+    # Also verify we can fetch the final job state and the output exists.
+    deadline = time.time() + 30
+    final = None
+    while time.time() < deadline:
+        j = gui_client.get(f"/api/jobs/{job_id}")
+        assert j.status_code == 200
+        final = j.json()
+        if final.get("status") in {"done", "error"}:
+            break
+        time.sleep(0.25)
+
+    assert final is not None
+    assert final["status"] == "done", final
+    out_path = Path(final["result"]["output"])
+    assert out_path.exists()
+    assert out_path.is_file()
