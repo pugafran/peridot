@@ -4643,7 +4643,10 @@ def cmd_self_update(args) -> None:
     This command is opt-in and requires confirmation unless --yes is passed.
     """
 
-    if not getattr(args, "yes", False) and sys.stdin.isatty():
+    if not getattr(args, "yes", False):
+        if not sys.stdin.isatty():
+            die(tr("self-update requiere -y en modo no interactivo"))
+
         prompt = tr("Actualizar peridot-cli a la ultima version? [y/N] ")
         ans = input(prompt).strip().lower()
         if ans not in {"y", "yes", "s", "si", "sí"}:

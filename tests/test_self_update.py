@@ -1,3 +1,4 @@
+import sys
 import types
 
 import peridot
@@ -110,3 +111,43 @@ def test_maybe_suggest_self_update_can_be_disabled_by_flag(monkeypatch, capsys):
 
     captured = capsys.readouterr()
     assert (captured.err + captured.out).strip() == ""
+
+
+def test_cmd_self_update_requires_yes_in_noninteractive(monkeypatch):
+    # If stdin is not a TTY, self-update should not run unless -y/--yes is set.
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+
+    called = {"n": 0}
+
+    def _check_call(cmd):
+        called["n"] += 1
+        raise AssertionError("subprocess.check_call should not be invoked")
+
+    monkeypatch.setattr(peridot.subprocess, "check_call", _check_call)
+
+    args = types.SimpleNamespace(yes=False)
+    try:
+        peridot.cmd_self_update(args)
+        raise AssertionError("expected SystemExit")
+    except SystemExit:
+        pass
+
+    assert called["n"] == 0
+
+
+def test_cmd_self_update_runs_with_yes_in_noninteractive(monkeypatch):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+
+    captured = {"cmd": None}
+
+    def _check_call(cmd):
+        captured["cmd"] = cmd
+        return 0
+
+    monkeypatch.setattr(peridot.subprocess, "check_call", _check_call)
+
+    args = types.SimpleNamespace(yes=True)
+    peridot.cmd_self_update(args)
+
+    assert captured["cmd"] is not None
+    assert captured["cmd"][0] == peridot.sys.executable
