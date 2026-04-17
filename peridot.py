@@ -2347,6 +2347,8 @@ def normalize_excludes(excludes: list[str] | None) -> list[str]:
     Additionally, normalize common path-y forms:
     - Backslashes (".ssh\\*") → slashes (".ssh/*")
     - Leading "./" ("./dist/*") → "dist/*"
+    - Leading "~/" ("~/.ssh/*") → ".ssh/*"
+    - Leading "/" ("/Library/*") → "Library/*" (patterns are matched against relative paths)
 
     This makes excludes behave more consistently across platforms and shells.
     """
@@ -2367,6 +2369,10 @@ def normalize_excludes(excludes: list[str] | None) -> list[str]:
                 part = part.replace("//", "/")
             while part.startswith("./"):
                 part = part[2:]
+            while part.startswith("~/"):
+                part = part[2:]
+            while part.startswith("/"):
+                part = part[1:]
             if part and part != ".":
                 normalized.append(part)
     return normalized

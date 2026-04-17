@@ -520,6 +520,8 @@ def test_normalize_excludes_splits_commas_and_trims():
 def test_normalize_excludes_normalizes_paths():
     # Leading ./ is a common habit, and backslashes show up on Windows shells.
     assert peridot.normalize_excludes(["./dist/*", r".ssh\\*"]) == ["dist/*", ".ssh/*"]
+    # Users also paste absolute-ish patterns; we match against relative paths.
+    assert peridot.normalize_excludes(["~/.ssh/*", "/Library/*"]) == [".ssh/*", "Library/*"]
     # Dots / empty pieces are ignored.
     assert peridot.normalize_excludes([".,,./"]) == []
 
