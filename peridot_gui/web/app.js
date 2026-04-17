@@ -94,7 +94,19 @@ async function api(path, opts={}) {
       let j = null;
       try { j = await r.json(); } catch { j = null; }
       if (j) {
-        const msg = (j && (j.detail || j.error)) ? (j.detail || j.error) : JSON.stringify(j);
+        let msg = (j && (j.detail || j.error)) ? (j.detail || j.error) : j;
+        // FastAPI validation errors often look like: {detail: [{loc, msg, type}, ...]}
+        if (Array.isArray(msg)) {
+          msg = msg
+            .map((e) => {
+              if (!e || typeof e !== 'object') return String(e);
+              const loc = Array.isArray(e.loc) ? e.loc.join('.') : '';
+              const m = e.msg || e.message || '';
+              return (loc ? `${loc}: ` : '') + String(m || JSON.stringify(e));
+            })
+            .join('\n');
+        }
+        if (msg && typeof msg === 'object') msg = JSON.stringify(msg);
         throw new Error(String(msg));
       }
     }
