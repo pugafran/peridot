@@ -75,3 +75,18 @@ version = "2.3.4"
     monkeypatch.setattr(builtins, "__import__", guarded_import)
 
     assert peridot.read_pyproject_version(pyproject) == "2.3.4"
+
+
+def test_cmd_version_json_includes_git_commit(capsys):
+    # Best-effort: in source checkouts we expect a git SHA; in installed builds it may be None.
+    peridot.cmd_version(type("Args", (), {"json": True})())
+    out = capsys.readouterr().out
+    payload = __import__("json").loads(out)
+
+    assert payload["app"] == "peridot"
+    assert "git_commit" in payload
+
+    sha = payload["git_commit"]
+    if sha is not None:
+        assert isinstance(sha, str)
+        assert 4 <= len(sha) <= 40

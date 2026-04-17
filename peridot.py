@@ -4213,10 +4213,51 @@ def cmd_doctor(args) -> None:
     console.print(table)
 
 
+def detect_git_commit() -> str | None:
+    """Best-effort detection of the current git commit.
+
+    Useful for debugging local checkouts.
+
+    Returns:
+        Short commit SHA (e.g. "a1b2c3d") when available, otherwise None.
+    """
+
+    try:
+        here = Path(__file__).resolve()
+    except Exception:
+        return None
+
+    repo_root: Path | None = None
+    for parent in [here.parent, *here.parents]:
+        if (parent / ".git").exists():
+            repo_root = parent
+            break
+
+    if repo_root is None:
+        return None
+
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except Exception:
+        return None
+
+    if proc.returncode != 0:
+        return None
+
+    sha = (proc.stdout or "").strip()
+    return sha or None
+
+
 def cmd_version(args) -> None:
     payload = {
         "app": "peridot",
         "version": APP_VERSION,
+        "git_commit": detect_git_commit(),
         "python_executable": str(getattr(sys, "executable", "") or ""),
         "python_version": platform.python_version(),
         "rich_available": bool(RICH_AVAILABLE),
@@ -4231,6 +4272,8 @@ def cmd_version(args) -> None:
         return
 
     print(f"peridot {APP_VERSION}")
+    if payload.get("git_commit"):
+        print(f"Git: {payload['git_commit']}")
     if payload["python_executable"]:
         print(f"Python: {payload['python_executable']} ({payload['python_version']})")
     else:
