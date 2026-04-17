@@ -171,6 +171,28 @@ DEFAULT_KEY = Path.home() / ".config" / "peridot" / "peridot.key"
 DEFAULT_PROFILE_STORE = Path.home() / ".config" / "peridot" / "profiles.json"
 DEFAULT_HISTORY_DIR = Path.home() / ".config" / "peridot" / "history"
 DEFAULT_SETTINGS_STORE = Path.home() / ".config" / "peridot" / "settings.json"
+
+
+def default_settings_store() -> Path:
+    """Return the effective settings store path.
+
+    Priority:
+    1) PERIDOT_SETTINGS_PATH environment variable
+    2) DEFAULT_SETTINGS_STORE constant
+
+    This keeps the default stable, while allowing test suites and power users
+    to redirect the settings store without needing per-command flags.
+    """
+
+    raw = (os.environ.get("PERIDOT_SETTINGS_PATH") or "").strip()
+    if raw:
+        try:
+            return Path(raw).expanduser()
+        except Exception:
+            # Fall back to the default if the env var is malformed.
+            return DEFAULT_SETTINGS_STORE
+    return DEFAULT_SETTINGS_STORE
+
 DEFAULT_EXCLUDES = {
     ".DS_Store",
     ".Trash",
@@ -558,7 +580,7 @@ def detect_runtime_language() -> str:
             return detect_system_language_hint() or DEFAULT_SETTINGS["language"]
         return sanitize_language(env_language)
     try:
-        settings_path = DEFAULT_SETTINGS_STORE
+        settings_path = default_settings_store()
         if settings_path.exists():
             raw = json.loads(settings_path.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
@@ -1413,7 +1435,8 @@ def save_profiles(data: dict, profile_path: Path = DEFAULT_PROFILE_STORE) -> Non
     profile_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def load_settings(settings_path: Path = DEFAULT_SETTINGS_STORE) -> dict:
+def load_settings(settings_path: Path | None = None) -> dict:
+    settings_path = settings_path or default_settings_store()
     data = dict(DEFAULT_SETTINGS)
     if not settings_path.exists():
         return data
@@ -1436,7 +1459,8 @@ def load_settings(settings_path: Path = DEFAULT_SETTINGS_STORE) -> dict:
     return data
 
 
-def save_settings(data: dict, settings_path: Path = DEFAULT_SETTINGS_STORE) -> None:
+def save_settings(data: dict, settings_path: Path | None = None) -> None:
+    settings_path = settings_path or default_settings_store()
     ensure_parent(settings_path)
     merged = dict(DEFAULT_SETTINGS)
     merged.update(data)
@@ -3822,7 +3846,8 @@ def render_settings_table(settings: dict) -> None:
     console.print(render_compression_setting(compression_level))
 
 
-def interactive_settings_editor(settings_path: Path = DEFAULT_SETTINGS_STORE) -> dict:
+def interactive_settings_editor(settings_path: Path | None = None) -> dict:
+    settings_path = settings_path or default_settings_store()
     settings = load_settings(settings_path)
     print_banner()
     render_settings_table(settings)
@@ -3851,7 +3876,7 @@ def interactive_settings_editor(settings_path: Path = DEFAULT_SETTINGS_STORE) ->
 
 
 def cmd_settings(args) -> None:
-    settings_path = getattr(args, "settings_path", DEFAULT_SETTINGS_STORE)
+    settings_path = getattr(args, "settings_path", None) or default_settings_store()
     json_mode = bool(getattr(args, "json", False))
 
     if getattr(args, "set", []):
@@ -3903,7 +3928,7 @@ def cmd_init(args) -> None:
         print_banner()
 
     key_path: Path = getattr(args, "key", DEFAULT_KEY)
-    settings_path: Path = DEFAULT_SETTINGS_STORE
+    settings_path: Path = default_settings_store()
 
     # Ensure key exists.
     key = load_key(key_path, create=True)
@@ -3960,7 +3985,8 @@ def cmd_doctor(args) -> None:
     rows.append(("bundles", "ok" if bundles else "empty", str(len(bundles))))
     rows.append(("profiles", "ok" if DEFAULT_PROFILE_STORE.exists() else "empty", str(DEFAULT_PROFILE_STORE)))
     settings = load_settings()
-    rows.append(("settings", "ok" if DEFAULT_SETTINGS_STORE.exists() else "default", str(DEFAULT_SETTINGS_STORE)))
+    settings_store = default_settings_store()
+    rows.append(("settings", "ok" if settings_store.exists() else "default", str(settings_store)))
     rows.append(("compression_level", "ok", f"{settings['compression_level']}/9"))
     rows.append(("compression_codec", "ok" if zstd is not None else "warn", active_compression_codec()))
     if zstd is None:
@@ -4669,7 +4695,7 @@ def build_parser() -> argparse.ArgumentParser:
     settings_parser = subparsers.add_parser("settings", help="Gestiona defaults persistentes de Peridot")
     settings_parser.add_argument("--show", action="store_true", help="Muestra los settings efectivos")
     settings_parser.add_argument("--set", action="append", default=[], help="Actualiza un setting con clave=valor. Repetible.")
-    settings_parser.add_argument("--settings-path", type=Path, default=DEFAULT_SETTINGS_STORE, help="Ruta del store de settings")
+    settings_parser.add_argument("--settings-path", type=Path, default=None, help="Ruta del store de settings (o PERIDOT_SETTINGS_PATH)")
     settings_parser.add_argument("--json", action="store_true", help="Structured JSON output (no banner/tables)")
     settings_parser.set_defaults(func=cmd_settings)
 
@@ -4732,7 +4758,7 @@ def main(argv: Iterable[str] | None = None) -> None:
     # If the system language looks Spanish but Peridot is running in English by
     # default (no explicit settings), suggest switching.
     try:
-        settings_path = DEFAULT_SETTINGS_STORE
+        settings_path = default_settings_store()
         has_settings = settings_path.exists()
     except Exception:
         has_settings = False
