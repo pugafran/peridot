@@ -127,7 +127,11 @@ def read_pyproject_version(pyproject_path: Path) -> str | None:
     try:
         import tomllib  # py3.11+
     except Exception:
-        return None
+        # Fallback for older Pythons when tomli is installed.
+        try:
+            import tomli as tomllib  # type: ignore[no-redef]
+        except Exception:
+            return None
 
     try:
         raw = pyproject_path.read_text(encoding="utf-8")
