@@ -2339,6 +2339,12 @@ def normalize_excludes(excludes: list[str] | None) -> list[str]:
 
     Users often pass multiple globs in a single flag (e.g. "a,b,c"). Support
     that by splitting on commas, trimming whitespace, and dropping empties.
+
+    Additionally, normalize common path-y forms:
+    - Backslashes (".ssh\\*") → slashes (".ssh/*")
+    - Leading "./" ("./dist/*") → "dist/*"
+
+    This makes excludes behave more consistently across platforms and shells.
     """
 
     if not excludes:
@@ -2350,7 +2356,14 @@ def normalize_excludes(excludes: list[str] | None) -> list[str]:
             continue
         for part in str(item).split(","):
             part = part.strip()
-            if part:
+            if not part:
+                continue
+            part = part.replace("\\", "/")
+            while "//" in part:
+                part = part.replace("//", "/")
+            while part.startswith("./"):
+                part = part[2:]
+            if part and part != ".":
                 normalized.append(part)
     return normalized
 

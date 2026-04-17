@@ -517,6 +517,13 @@ def test_normalize_excludes_splits_commas_and_trims():
     assert peridot.normalize_excludes(None) == []
 
 
+def test_normalize_excludes_normalizes_paths():
+    # Leading ./ is a common habit, and backslashes show up on Windows shells.
+    assert peridot.normalize_excludes(["./dist/*", r".ssh\\*"]) == ["dist/*", ".ssh/*"]
+    # Dots / empty pieces are ignored.
+    assert peridot.normalize_excludes([".,,./"]) == []
+
+
 def test_collect_files_prunes_excluded_directories(monkeypatch, tmp_path):
     # Arrange a small tree where a directory should be excluded by basename.
     (tmp_path / ".cache").mkdir()
