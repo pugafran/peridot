@@ -886,15 +886,27 @@ def python_runtime_hint() -> str | None:
 
 
 def parse_simple_version(value: str) -> tuple[int, int, int] | None:
-    """Parse a simple X.Y.Z version string.
+    """Parse a simple semantic-ish version string.
+
+    Accepts:
+      - X.Y.Z (optionally prefixed with "v")
+      - X.Y (interpreted as X.Y.0)
+      - X (interpreted as X.0.0)
+
+    Ignores any suffix after the numeric prefix (e.g. "1.2.3rc1").
 
     We intentionally avoid external deps (packaging). If parsing fails, return None.
     """
 
-    m = re.match(r"^v?(\d+)\.(\d+)\.(\d+)", (value or "").strip())
+    s = (value or "").strip()
+    m = re.match(r"^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?", s)
     if not m:
         return None
-    return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+    major = int(m.group(1))
+    minor = int(m.group(2) or 0)
+    patch = int(m.group(3) or 0)
+    return (major, minor, patch)
 
 
 def fetch_latest_pypi_version(package: str = "peridot-cli") -> str | None:

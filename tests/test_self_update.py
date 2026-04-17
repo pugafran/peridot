@@ -7,6 +7,9 @@ def test_parse_simple_version():
     assert peridot.parse_simple_version("0.4.5") == (0, 4, 5)
     assert peridot.parse_simple_version("v0.4.5") == (0, 4, 5)
     assert peridot.parse_simple_version("1.2.3rc1") == (1, 2, 3)
+    assert peridot.parse_simple_version("1.2") == (1, 2, 0)
+    assert peridot.parse_simple_version("v1.2") == (1, 2, 0)
+    assert peridot.parse_simple_version("7") == (7, 0, 0)
     assert peridot.parse_simple_version("nope") is None
 
 
