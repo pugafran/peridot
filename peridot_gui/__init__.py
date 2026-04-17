@@ -157,6 +157,122 @@ def _run_peridot_json(args: list[str]) -> dict[str, Any]:
         raise RuntimeError(f"Invalid JSON output from peridot: {exc}. Output was: {p.stdout[:400]}")
 
 
+def _expand_path(p: str) -> str:
+    """Expand a user-supplied path into an absolute, normalized path.
+
+    Windows-first behavior:
+    - Accepts ~ and environment variables.
+    - Avoids Path.resolve() edge-cases on Windows (e.g. drive-relative paths,
+      non-existent drives, weird prefixes) by falling back to abspath.
+    """
+
+    raw = str(p or "")
+    expanded = os.path.expandvars(os.path.expanduser(raw))
+
+    # Normalize separators a bit for display/consistency; the OS APIs can still
+    # accept forward slashes on Windows, but we prefer native.
+    if os.name == "nt":
+        expanded = expanded.replace("/", "\\")
+
+    try:
+        return str(Path(expanded).resolve(strict=False))
+    except Exception:
+        # Last resort: avoid raising on odd Windows paths.
+        return os.path.abspath(expanded)
+
+
+def _default_output_dir() -> Path:
+    """Pick a sensible default output directory.
+
+    Usability note (Windows-first): when the GUI is launched from a shortcut /
+    Start Menu, the process cwd can be something like System32, which is a
+    terrible default for writing files.
+
+    We prefer:
+    - ~/Downloads if it exists
+    - else the user's home directory
+    - else the current working directory
+    """
+
+    try:
+        home = Path.home()
+        dl = home / "Downloads"
+        if dl.exists() and dl.is_dir():
+            return dl
+        if home.exists() and home.is_dir():
+            return home
+    except Exception:
+        pass
+    return Path.cwd()
+
+
+def _slug(s: str) -> str:
+    s = (s or "").strip().lower()
+    out = []
+    for ch in s:
+        if ch.isalnum():
+            out.append(ch)
+        elif ch in ("-", "_", "."):
+            out.append(ch)
+        elif ch.isspace():
+            out.append("-")
+    slug = "".join(out).strip("-._")
+    return slug or "bundle"
+
+
+def _compute_output_path(*, name: str, output_raw: str | None) -> str:
+    """Compute a safe output bundle path.
+
+    Windows-first UX:
+    - If the user doesn't provide an output path, write into a sensible default
+      directory (usually ~/Downloads).
+    - If the user provides only a filename (relative, no directory component),
+      also write into the default directory.
+      (Important on Windows: GUI apps launched via shortcuts often start in
+      System32, and writing there is confusing / may fail.)
+    - If the user passes a directory (existing) or a path ending in a path
+      separator (e.g. "C:\\tmp\\"), write into that directory using a
+      deterministic filename.
+    - Otherwise treat it as a file path.
+    """
+
+    suggested_name = f"{_slug(name)}.peridot"
+
+    if not output_raw:
+        return str((_default_output_dir() / suggested_name))
+
+    raw = str(output_raw).strip()
+    if not raw:
+        return str((_default_output_dir() / suggested_name))
+
+    # If the UI provides a simple filename (our default), treat it as living in
+    # the default output directory.
+    raw_name = None
+    try:
+        raw_p = Path(raw)
+        raw_name = raw_p.name
+        is_simple_name = (raw_p.name == raw) and (str(raw_p.parent) in {".", ""})
+    except Exception:
+        is_simple_name = False
+
+    if is_simple_name and raw_name:
+        return str((_default_output_dir() / raw_name))
+
+    expanded = _expand_path(raw)
+    p = Path(expanded)
+
+    if raw.endswith(("/", "\\")):
+        return str((p / suggested_name))
+
+    try:
+        if p.exists() and p.is_dir():
+            return str((p / suggested_name))
+    except Exception:
+        pass
+
+    return str(p)
+
+
 def _launch_job(job: Job, peridot_args: list[str]) -> None:
     job.status = "running"
     job.started_ts = time.time()
@@ -432,28 +548,7 @@ def create_app():
             except Exception as exc:
                 raise HTTPException(status_code=500, detail=str(exc))
 
-    def _expand_path(p: str) -> str:
-        """Expand a user-supplied path into an absolute, normalized path.
-
-        Windows-first behavior:
-        - Accepts ~ and environment variables.
-        - Avoids Path.resolve() edge-cases on Windows (e.g. drive-relative paths,
-          non-existent drives, weird prefixes) by falling back to abspath.
-        """
-
-        raw = str(p or "")
-        expanded = os.path.expandvars(os.path.expanduser(raw))
-
-        # Normalize separators a bit for display/consistency; the OS APIs can
-        # still accept forward slashes on Windows, but we prefer native.
-        if os.name == "nt":
-            expanded = expanded.replace("/", "\\")
-
-        try:
-            return str(Path(expanded).resolve(strict=False))
-        except Exception:
-            # Last resort: avoid raising on odd Windows paths.
-            return os.path.abspath(expanded)
+    # _expand_path is defined at module scope for testability.
 
     @app.post("/api/pack/scan")
     def pack_scan(payload: dict[str, Any]) -> dict[str, Any]:
@@ -730,96 +825,8 @@ def create_app():
         t.start()
         return {"job_id": jid}
 
-    def _slug(s: str) -> str:
-        s = (s or "").strip().lower()
-        out = []
-        for ch in s:
-            if ch.isalnum():
-                out.append(ch)
-            elif ch in ("-", "_", "."):
-                out.append(ch)
-            elif ch.isspace():
-                out.append("-")
-        slug = "".join(out).strip("-._")
-        return slug or "bundle"
-
-    def _default_output_dir() -> Path:
-        """Pick a sensible default output directory.
-
-        Usability note (Windows-first): when the GUI is launched from a shortcut
-        / Start Menu, the process cwd can be something like System32, which is a
-        terrible default for writing files.
-
-        We prefer:
-        - ~/Downloads if it exists
-        - else the user's home directory
-        - else the current working directory
-        """
-
-        try:
-            home = Path.home()
-            dl = home / "Downloads"
-            if dl.exists() and dl.is_dir():
-                return dl
-            if home.exists() and home.is_dir():
-                return home
-        except Exception:
-            pass
-        return Path.cwd()
-
-    def _compute_output_path(*, name: str, output_raw: str | None) -> str:
-        """Compute a safe output bundle path.
-
-        Windows-first UX:
-        - If the user doesn't provide an output path, write into a sensible
-          default directory (usually ~/Downloads).
-        - If the user provides only a filename (relative, no directory
-          component), also write into the default directory.
-          (Important on Windows: GUI apps launched via shortcuts often start in
-          System32, and writing there is confusing / may fail.)
-        - If the user passes a directory (existing) or a path ending in a path
-          separator (e.g. "C:\\tmp\\"), write into that directory using a
-          deterministic filename.
-        - Otherwise treat it as a file path.
-        """
-
-        suggested_name = f"{_slug(name)}.peridot"
-
-        if not output_raw:
-            return str((_default_output_dir() / suggested_name))
-
-        raw = str(output_raw).strip()
-        if not raw:
-            return str((_default_output_dir() / suggested_name))
-
-        # If the UI provides a simple filename (our default), treat it as living
-        # in the default output directory.
-        raw_name = None
-        try:
-            raw_p = Path(raw)
-            raw_name = raw_p.name
-            is_simple_name = (raw_p.name == raw) and (str(raw_p.parent) in {".", ""})
-        except Exception:
-            is_simple_name = False
-
-        # If it's just a filename, place it in the default output directory.
-        if is_simple_name and raw_name:
-            return str((_default_output_dir() / raw_name))
-
-        expanded = _expand_path(raw)
-        p = Path(expanded)
-
-        # If the user typed a trailing separator, interpret as directory.
-        if raw.endswith(("/", "\\")):
-            return str((p / suggested_name))
-
-        try:
-            if p.exists() and p.is_dir():
-                return str((p / suggested_name))
-        except Exception:
-            pass
-
-        return str(p)
+    # _slug / _default_output_dir / _compute_output_path are defined at module
+    # scope for testability.
 
     @app.post("/api/pack")
     def pack(payload: dict[str, Any]) -> dict[str, Any]:
