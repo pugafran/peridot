@@ -353,6 +353,8 @@ TRANSLATIONS = {
         "Portable config bundles for humans": "Portable config bundles for humans",
         "Bundles portables de configuracion para humanos": "Portable config bundles for humans",
         "Error": "Error",
+        "El store de settings es invalido ({path}): {exc}": "Settings store is invalid ({path}): {exc}",
+        "El store de settings debe ser un objeto JSON.": "Settings store must be a JSON object.",
         "Compression": "Compression",
         "Level": "Level",
         "Codec": "Codec",
@@ -1496,9 +1498,15 @@ def load_settings(settings_path: Path | None = None) -> dict:
     try:
         raw = json.loads(settings_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        die(f"El store de settings es invalido ({settings_path}): {exc}")
+        die(
+            trf(
+                "El store de settings es invalido ({path}): {exc}",
+                path=settings_path,
+                exc=exc,
+            )
+        )
     if not isinstance(raw, dict):
-        die("El store de settings debe ser un objeto JSON.")
+        die(tr("El store de settings debe ser un objeto JSON."))
     data.update(raw)
     data["compression_level"] = sanitize_compression_level(data.get("compression_level"))
     data["jobs"] = sanitize_jobs(data.get("jobs"))
