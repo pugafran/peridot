@@ -284,6 +284,30 @@ def _compute_output_path(*, name: str, output_raw: str | None) -> str:
     return str(p)
 
 
+def _resolve_bundle_path(raw: str) -> str:
+    """Resolve a user-supplied bundle path for GUI endpoints.
+
+    Windows-first UX: if the user types only a filename (no directory), resolve
+    it against the GUI default output directory instead of the current working
+    directory (which may be System32 when launched via a shortcut).
+    """
+
+    s = str(raw or "").strip()
+    if not s:
+        return ""
+
+    try:
+        p = Path(s)
+        is_simple_name = (p.name == s) and (str(p.parent) in {".", ""})
+    except Exception:
+        is_simple_name = False
+
+    if is_simple_name:
+        return str((_default_output_dir() / s))
+
+    return _expand_path(s)
+
+
 def _launch_job(job: Job, peridot_args: list[str]) -> None:
     # Jobs are mutated from background threads while the API is serving status
     # and SSE events. Keep updates under a lock so we don't expose partially
@@ -721,7 +745,10 @@ def create_app():
     def bundles(dir: str | None = None) -> dict[str, Any]:
         """List local bundles.
 
-        - dir: optional directory to search for *.peridot (defaults to cwd).
+        - dir: optional directory to search for *.peridot.
+          Defaults to the GUI default output directory (usually ~/Downloads) to
+          avoid surprising empty lists when the GUI is launched with cwd=System32
+          on Windows.
         Also includes history snapshots from Peridot history dir.
         """
 
@@ -732,7 +759,7 @@ def create_app():
         except Exception:
             history_dir = None
 
-        base = Path(dir).expanduser() if dir else Path.cwd()
+        base = Path(dir).expanduser() if dir else _default_output_dir()
         items = _list_bundles_in_dir(base)
 
         history_items: list[dict[str, Any]] = []
@@ -749,8 +776,12 @@ def create_app():
     def inspect_bundle(path: str) -> Any:
         # Prefer CLI JSON.
         try:
-            p = _expand_path(path)
+            p = _resolve_bundle_path(path)
+            if not p:
+                raise HTTPException(status_code=400, detail="path is required")
             return _run_peridot_json(["inspect", p, "--json"])
+        except HTTPException:
+            raise
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc))
 
@@ -762,7 +793,7 @@ def create_app():
         transactional = bool(payload.get("transactional") if payload.get("transactional") is not None else True)
         verify = bool(payload.get("verify") if payload.get("verify") is not None else True)
 
-        package = _expand_path(package_raw) if package_raw else ""
+        package = _resolve_bundle_path(package_raw) if package_raw else ""
         target = _expand_path(target_raw) if target_raw else ""
 
         if not package:
@@ -837,7 +868,7 @@ def create_app():
         transactional = bool(payload.get("transactional") if payload.get("transactional") is not None else True)
         verify = bool(payload.get("verify") if payload.get("verify") is not None else True)
 
-        package = _expand_path(package_raw) if package_raw else ""
+        package = _resolve_bundle_path(package_raw) if package_raw else ""
         target = _expand_path(target_raw) if target_raw else ""
 
         if not package:

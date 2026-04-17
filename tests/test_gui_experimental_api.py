@@ -41,6 +41,11 @@ def test_gui_api_smoke_meta_doctor_settings(monkeypatch):
 
 
 def test_gui_api_pack_scan_and_pack_job_with_sse(monkeypatch, tmp_path: Path):
+    # Windows-first behavior: when the GUI receives a simple output filename,
+    # it should write into ~/Downloads instead of cwd.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / "Downloads").mkdir(parents=True, exist_ok=True)
+
     client = _make_client(monkeypatch)
 
     # Scan a known file to ensure /api/pack/scan is wired.
@@ -53,7 +58,8 @@ def test_gui_api_pack_scan_and_pack_job_with_sse(monkeypatch, tmp_path: Path):
     assert scan["files"] >= 1
 
     # Launch a tiny pack job to validate /api/pack and /api/jobs/*.
-    out_path = tmp_path / "gui-test.peridot"
+    # Pass just a filename (no directory) to simulate how the web UI behaves.
+    out_path = tmp_path / "Downloads" / "gui-test.peridot"
     r = client.post(
         "/api/pack",
         json={
@@ -61,7 +67,7 @@ def test_gui_api_pack_scan_and_pack_job_with_sse(monkeypatch, tmp_path: Path):
             "paths": [str(Path(__file__))],
             "preset": "",
             "excludes": [],
-            "output": str(out_path),
+            "output": "gui-test.peridot",
         },
     )
     assert r.status_code == 200
