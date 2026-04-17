@@ -144,8 +144,19 @@ Windows notes:
 
 API endpoints used by the web app (for debugging):
 - `GET /api/meta`, `GET /api/doctor`, `GET /api/settings`
-- `POST /api/pack/scan`, `POST /api/pack` (jobs)
-- `GET /api/jobs/{id}`, `GET /api/jobs/{id}/events` (SSE)
+- Pack wizard:
+  - `POST /api/pack/scan`
+  - `POST /api/pack` (starts a job)
+- Apply wizard:
+  - `POST /api/apply/plan`
+  - `POST /api/apply/run` (starts a job)
+- Job status/progress:
+  - `GET /api/jobs/{id}`
+  - `GET /api/jobs/{id}/events` (SSE)
+- Bundle helpers:
+  - `GET /api/bundles`
+  - `GET /api/inspect?path=...`
+  - `POST /api/os/reveal`, `POST /api/os/open`
 
 Benchmark de rendimiento de `pack`:
 
